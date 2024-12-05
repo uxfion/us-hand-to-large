@@ -114,7 +114,7 @@ class RestormerGenerator(nn.Module):
         
         # Downsample & Upsample
         self.downs = nn.ModuleList([DownSample(num_ch) for num_ch in self.channels[:-1]])
-        self.ups = nn.ModuleList([UpSample(num_ch) for num_ch in reversed(self.channels)[:-1]])
+        self.ups = nn.ModuleList([UpSample(num_ch) for num_ch in list(reversed(self.channels))[:-1]])
         
         # Reduce blocks
         self.reduces = nn.ModuleList([
