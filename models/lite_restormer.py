@@ -61,6 +61,112 @@ class TransformerBlock(nn.Module):
                         .contiguous().reshape(b, c, h, w))
         return x
 
+class DownSample(nn.Module):
+    def __init__(self, channels):
+        super(DownSample, self).__init__()
+        self.body = nn.Sequential(nn.Conv2d(channels, channels // 2, kernel_size=3, padding=1, bias=False),
+                                  nn.PixelUnshuffle(2))
+
+    def forward(self, x):
+        return self.body(x)
+
+class UpSample(nn.Module):
+    def __init__(self, channels):
+        super(UpSample, self).__init__()
+        self.body = nn.Sequential(nn.Conv2d(channels, channels * 2, kernel_size=3, padding=1, bias=False),
+                                  nn.PixelShuffle(2))
+
+    def forward(self, x):
+        return self.body(x)
+
+class HybridRestormerGenerator(nn.Module):
+    """Hybrid generator combining convolution and Restormer blocks for ultrasound super-resolution"""
+    
+    def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=6, padding_type='reflect'):
+        super(HybridRestormerGenerator, self).__init__()
+        
+        if type(norm_layer) == functools.partial:
+            use_bias = norm_layer.func == nn.InstanceNorm2d
+        else:
+            use_bias = norm_layer == nn.InstanceNorm2d
+
+        self.expansion_factor = 2.66
+        n_downsampling = 2
+
+        # Initial convolution
+        model = [
+            nn.ReflectionPad2d(3),
+            nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0, bias=use_bias),
+            norm_layer(ngf),
+            nn.ReLU(True)
+        ]
+        
+        # Downsampling path: PixelUnshuffle -> RestormerBlock -> PixelUnshuffle -> RestormerBlock
+        for i in range(n_downsampling):
+            mult = 2 ** i
+            in_channels = ngf * mult
+            
+            # PixelUnshuffle下采样
+            model += [
+                nn.Conv2d(in_channels, in_channels//2, kernel_size=3, padding=1, bias=use_bias),
+                nn.PixelUnshuffle(2)  # 通道数会×4，空间尺寸会/2
+            ]
+            
+            # 每次下采样后添加一个Restormer block
+            # 注意：通道数已经变为 in_channels * 2 (因为PixelUnshuffle)
+            model += [
+                TransformerBlock(
+                    channels=in_channels*2,  # PixelUnshuffle后的通道数
+                    num_heads=min(2**(i+1), 8),  # 随着层数增加而增加头数，限制最大头数为8
+                    expansion_factor=self.expansion_factor
+                )
+            ]
+
+        # Middle Restormer blocks
+        mult = 2 ** n_downsampling
+        for i in range(n_blocks):
+            model += [
+                TransformerBlock(
+                    channels=ngf * mult,
+                    num_heads=8,  # 中间层使用最多的头
+                    expansion_factor=self.expansion_factor
+                )
+            ]
+
+        # Upsampling path: RestormerBlock -> PixelShuffle -> RestormerBlock -> PixelShuffle
+        for i in range(n_downsampling):
+            mult = 2 ** (n_downsampling - i)
+            in_channels = ngf * mult
+            
+            # 每次上采样前添加一个Restormer block
+            model += [
+                TransformerBlock(
+                    channels=in_channels,
+                    num_heads=2**(n_downsampling-i),
+                    expansion_factor=self.expansion_factor
+                )
+            ]
+            
+            # PixelShuffle上采样
+            model += [
+                nn.Conv2d(in_channels, in_channels*2, kernel_size=3, padding=1, bias=use_bias),
+                nn.PixelShuffle(2)  # 通道数会/4，空间尺寸会×2
+            ]
+
+        # Output convolution
+        model += [
+            nn.ReflectionPad2d(3),
+            nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0),
+            nn.Tanh()
+        ]
+
+        self.model = nn.Sequential(*model)
+
+    def forward(self, input):
+        """Standard forward"""
+        return self.model(input)
+    
+
 class LiteRestormerGenerator(nn.Module):
     """Lightweight Restormer-based generator with simplified encoder-decoder architecture"""
     
@@ -123,97 +229,3 @@ class LiteRestormerGenerator(nn.Module):
         x = self.output(x)
         
         return x
-
-
-class HybridRestormerGenerator(nn.Module):
-    """Hybrid generator combining convolution and Restormer blocks"""
-    
-    def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=6, padding_type='reflect'):
-        super(HybridRestormerGenerator, self).__init__()
-        
-        if type(norm_layer) == functools.partial:
-            use_bias = norm_layer.func == nn.InstanceNorm2d
-        else:
-            use_bias = norm_layer == nn.InstanceNorm2d
-
-        self.expansion_factor = 2.66
-        n_downsampling = 2
-
-        # Initial convolution
-        model = [
-            nn.ReflectionPad2d(3),
-            nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0, bias=use_bias),
-            norm_layer(ngf),
-            nn.ReLU(True)
-        ]
-        
-        # Downsampling path: Conv -> RestormerBlock -> Conv -> RestormerBlock
-        for i in range(n_downsampling):
-            mult = 2 ** i
-            in_channels = ngf * mult
-            out_channels = ngf * mult * 2
-            
-            # 卷积下采样
-            model += [
-                nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=2, padding=1, bias=use_bias),
-                norm_layer(out_channels),
-                nn.ReLU(True)
-            ]
-            
-            # 每次下采样后添加一个Restormer block
-            model += [
-                TransformerBlock(
-                    channels=out_channels,
-                    num_heads=2**(i+1),  # 随着层数增加而增加头数
-                    expansion_factor=self.expansion_factor
-                )
-            ]
-
-        # Middle Restormer blocks
-        mult = 2 ** n_downsampling
-        for i in range(n_blocks):
-            model += [
-                TransformerBlock(
-                    channels=ngf * mult,
-                    num_heads=8,  # 中间层使用最多的头
-                    expansion_factor=self.expansion_factor
-                )
-            ]
-
-        # Upsampling path: RestormerBlock -> ConvTranspose -> RestormerBlock -> ConvTranspose
-        for i in range(n_downsampling):
-            mult = 2 ** (n_downsampling - i)
-            in_channels = ngf * mult
-            out_channels = int(ngf * mult / 2)
-
-            # 每次上采样前添加一个Restormer block
-            model += [
-                TransformerBlock(
-                    channels=in_channels,
-                    num_heads=2**(n_downsampling-i),  # 随着层数减少而减少头数
-                    expansion_factor=self.expansion_factor
-                )
-            ]
-            
-            # 转置卷积上采样
-            model += [
-                nn.ConvTranspose2d(in_channels, out_channels,
-                                 kernel_size=3, stride=2,
-                                 padding=1, output_padding=1,
-                                 bias=use_bias),
-                norm_layer(out_channels),
-                nn.ReLU(True)
-            ]
-
-        # Output convolution
-        model += [
-            nn.ReflectionPad2d(3),
-            nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0),
-            nn.Tanh()
-        ]
-
-        self.model = nn.Sequential(*model)
-
-    def forward(self, input):
-        """Standard forward"""
-        return self.model(input)
