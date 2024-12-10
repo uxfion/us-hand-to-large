@@ -64,8 +64,10 @@ class TransformerBlock(nn.Module):
 class DownSample(nn.Module):
     def __init__(self, channels):
         super(DownSample, self).__init__()
-        self.body = nn.Sequential(nn.Conv2d(channels, channels // 2, kernel_size=3, padding=1, bias=False),
-                                  nn.PixelUnshuffle(2))
+        self.body = nn.Sequential(
+            nn.Conv2d(channels, channels // 2, kernel_size=3, padding=1, bias=False),
+            nn.PixelUnshuffle(2)
+        )
 
     def forward(self, x):
         return self.body(x)
@@ -73,8 +75,10 @@ class DownSample(nn.Module):
 class UpSample(nn.Module):
     def __init__(self, channels):
         super(UpSample, self).__init__()
-        self.body = nn.Sequential(nn.Conv2d(channels, channels * 2, kernel_size=3, padding=1, bias=False),
-                                  nn.PixelShuffle(2))
+        self.body = nn.Sequential(
+            nn.Conv2d(channels, channels * 2, kernel_size=3, padding=1, bias=False),
+            nn.PixelShuffle(2)
+        )
 
     def forward(self, x):
         return self.body(x)
@@ -165,67 +169,103 @@ class HybridRestormerGenerator(nn.Module):
     def forward(self, input):
         """Standard forward"""
         return self.model(input)
-    
+
+
 
 class LiteRestormerGenerator(nn.Module):
-    """Lightweight Restormer-based generator with simplified encoder-decoder architecture"""
-    
-    def __init__(self, input_nc, output_nc, ngf=48, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=6, padding_type='reflect'):
+    """Lightweight Restormer for ultrasound image enhancement"""
+    def __init__(self, input_nc=3, output_nc=3, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=6, padding_type='reflect'):  # 修改默认ngf为64
         super(LiteRestormerGenerator, self).__init__()
         
-        # Architecture parameters
-        expansion_factor = 2.66
-        num_heads = 4  # 固定使用4个头
-        
-        # Input convolution
-        self.embed_conv = nn.Sequential(
-            nn.ReflectionPad2d(3),
-            nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0, bias=False)
-        )
+        # 配置参数
+        num_blocks = [2, 3, 2]  # 每层的TransformerBlock数量
+        num_heads = [1, 2, 4]   # 每层的注意力头数
+        channels = [ngf, ngf*2, ngf*4]  # 每层的通道数 [64, 128, 256]
+        expansion_factor = 2.66  # GDFN扩展因子
+        num_refinement = 2      # 精调阶段的TransformerBlock数量
 
-        # Encoder blocks - 两次下采样
-        self.encoder = nn.Sequential(
-            nn.Conv2d(ngf, ngf*2, kernel_size=3, stride=2, padding=1, bias=False),
-            TransformerBlock(ngf*2, num_heads, expansion_factor),
-            nn.Conv2d(ngf*2, ngf*4, kernel_size=3, stride=2, padding=1, bias=False),
-            TransformerBlock(ngf*4, num_heads, expansion_factor)
-        )
-        
-        # Middle Transform blocks
-        self.transform_blocks = nn.Sequential(*[
-            TransformerBlock(ngf*4, num_heads, expansion_factor)
-            for _ in range(n_blocks)
+        # 初始特征提取
+        self.embed_conv = nn.Conv2d(input_nc, channels[0], kernel_size=3, padding=1, bias=False)
+
+        # Encoder阶段
+        self.encoders = nn.ModuleList([
+            nn.Sequential(*[TransformerBlock(num_ch, num_ah, expansion_factor) 
+                          for _ in range(num_tb)]) 
+            for num_tb, num_ah, num_ch in zip(num_blocks, num_heads, channels)
         ])
-        
-        # Decoder blocks - 两次上采样
-        self.decoder = nn.Sequential(
-            nn.ConvTranspose2d(ngf*4, ngf*2, kernel_size=4, stride=2, padding=1, bias=False),
-            TransformerBlock(ngf*2, num_heads, expansion_factor),
-            nn.ConvTranspose2d(ngf*2, ngf, kernel_size=4, stride=2, padding=1, bias=False),
-            TransformerBlock(ngf, num_heads, expansion_factor)
-        )
-        
-        # Output convolution
-        self.output = nn.Sequential(
-            nn.ReflectionPad2d(3),
-            nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0, bias=False),
-            nn.Tanh()
-        )
+
+        # 下采样模块
+        self.downs = nn.ModuleList([
+            DownSample(channels[i]) for i in range(len(channels)-1)
+        ])
+
+        # 上采样模块
+        self.ups = nn.ModuleList([
+            UpSample(channels[i]) for i in reversed(range(1, len(channels)))
+        ])
+
+        # Decoder阶段 - 修正通道数计算
+        self.decoders = nn.ModuleList([
+            nn.Sequential(
+                nn.Conv2d(channels[1]*2, channels[1], kernel_size=1, bias=False),  # 256->128
+                *[TransformerBlock(channels[1], num_heads[1], expansion_factor)
+                  for _ in range(num_blocks[1])]
+            ),
+            nn.Sequential(
+                nn.Conv2d(channels[0]*2, channels[0], kernel_size=1, bias=False),  # 128->64
+                *[TransformerBlock(channels[0], num_heads[0], expansion_factor)
+                  for _ in range(num_blocks[0])]
+            )
+        ])
+
+        # 精调阶段
+        self.refinement = nn.Sequential(*[
+            TransformerBlock(channels[0], num_heads[0], expansion_factor)
+            for _ in range(num_refinement)
+        ])
+
+        # 输出层
+        self.output = nn.Conv2d(channels[0], output_nc, kernel_size=3, padding=1, bias=False)
 
     def forward(self, x):
-        # Initial embedding
-        x = self.embed_conv(x)
+        # 初始特征提取
+        fo = self.embed_conv(x)
+        # print(f"After embed_conv: {fo.shape}")
         
-        # Encoder
-        x = self.encoder(x)
+        # Encoder路径
+        out_enc1 = self.encoders[0](fo)
+        # print(f"After encoder[0]: {out_enc1.shape}")
         
-        # Transform blocks
-        x = self.transform_blocks(x)
+        out_enc2 = self.encoders[1](self.downs[0](out_enc1))
+        # print(f"After encoder[1]: {out_enc2.shape}")
         
-        # Decoder
-        x = self.decoder(x)
+        out_enc3 = self.encoders[2](self.downs[1](out_enc2))
+        # print(f"After encoder[2]: {out_enc3.shape}")
+
+        # Decoder路径
+        # 第一个decode块：从最深层往回走
+        ups0_out = self.ups[0](out_enc3)
+        # print(f"After ups[0]: {ups0_out.shape}")
+        # print(f"out_enc2 shape: {out_enc2.shape}")
         
-        # Output
-        x = self.output(x)
+        # 特征融合并处理
+        out_dec2 = self.decoders[0](torch.cat([ups0_out, out_enc2], dim=1))
+        # print(f"After decoder[0]: {out_dec2.shape}")
+
+        # 第二个decode块
+        ups1_out = self.ups[1](out_dec2)
+        # print(f"After ups[1]: {ups1_out.shape}")
+        # print(f"out_enc1 shape: {out_enc1.shape}")
         
-        return x
+        # 特征融合并处理
+        out_dec1 = self.decoders[1](torch.cat([ups1_out, out_enc1], dim=1))
+        # print(f"After decoder[1]: {out_dec1.shape}")
+
+        # 精调和输出
+        fr = self.refinement(out_dec1)
+        # print(f"After refinement: {fr.shape}")
+        
+        out = self.output(fr) + x
+        # print(f"Final output: {out.shape}")
+        
+        return out
