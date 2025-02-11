@@ -71,7 +71,7 @@ class CycleGANModel(BaseModel):
         # define networks (both Generators and discriminators)
         # The naming is different from those used in the paper.
         # Code (vs. paper): G_A (G), G_B (F), D_A (D_Y), D_B (D_X)
-        self.netG_A = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf, opt.netG, opt.norm,
+        self.netG_A = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf, opt.netGab, opt.norm,
                                         not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids)
         self.netG_B = networks.define_G(opt.output_nc, opt.input_nc, opt.ngf, opt.netG, opt.norm,
                                         not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids)
@@ -113,8 +113,8 @@ class CycleGANModel(BaseModel):
     def forward(self):
         """Run forward pass; called by both functions <optimize_parameters> and <test>."""
         self.fake_B, self.loss_vq_A = self.netG_A(self.real_A)  # G_A(A)
-        self.rec_A, _ = self.netG_B(self.fake_B)   # G_B(G_A(A))
-        self.fake_A, self.loss_vq_B = self.netG_B(self.real_B)  # G_B(B)
+        self.rec_A = self.netG_B(self.fake_B)   # G_B(G_A(A))
+        self.fake_A = self.netG_B(self.real_B)  # G_B(B)
         self.rec_B, _ = self.netG_A(self.fake_A)   # G_A(G_B(B))
 
     def backward_D_basic(self, netD, real, fake):
@@ -161,13 +161,12 @@ class CycleGANModel(BaseModel):
             self.idt_A, idt_loss_vq_A = self.netG_A(self.real_B)
             self.loss_idt_A = self.criterionIdt(self.idt_A, self.real_B) * lambda_B * lambda_idt
             # G_B should be identity if real_A is fed: ||G_B(A) - A||
-            self.idt_B, idt_loss_vq_B = self.netG_B(self.real_A)
+            self.idt_B = self.netG_B(self.real_A)
             self.loss_idt_B = self.criterionIdt(self.idt_B, self.real_A) * lambda_A * lambda_idt
         else:
             self.loss_idt_A = 0
             self.loss_idt_B = 0
             idt_loss_vq_A = 0
-            idt_loss_vq_B = 0
 
         # GAN loss D_A(G_A(A))
         self.loss_G_A = self.criterionGAN(self.netD_A(self.fake_B), True)
