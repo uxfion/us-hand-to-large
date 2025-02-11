@@ -80,6 +80,60 @@ def cyclegan_infer(model, image_raw):
 
     return fake_image
 
+def cyclegan_unet_infer(model, image_raw):
+    # 保存原始尺寸
+    original_size = image_raw.size
+
+    # 计算能被4整除的目标尺寸
+    def make_size_divisible_by_4(size):
+        return tuple(s + (4 - (s % 4)) if s % 4 != 0 else s for s in size)
+    
+    target_size = make_size_divisible_by_4((256, 256))
+    
+    # 转换为RGB并调整大小
+    if image_raw.mode != 'RGB':
+        image_raw = image_raw.convert('RGB')
+    image_resized = image_raw.resize(target_size, Image.Resampling.BICUBIC)
+    
+    # 标准化转换
+    transform = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+    ])
+    
+    # 添加调试信息
+    image = transform(image_resized)
+    print(f"Image tensor shape before unsqueeze: {image.shape}")
+    image = image.unsqueeze(0)
+    print(f"Image tensor shape after unsqueeze: {image.shape}")
+
+    # 确保模型在评估模式
+    if hasattr(model, 'netG'):
+        model.netG.eval()
+    
+    # 执行推理
+    try:
+        with torch.no_grad():
+            # 确保数据在正确的设备上
+            device = next(model.netG.parameters()).device
+            image = image.to(device)
+            
+            # 添加形状检查
+            print(f"Input shape before netG: {image.shape}")
+            fake_image = model.netG(image)
+            print(f"Output shape after netG: {fake_image.shape}")
+    except RuntimeError as e:
+        print(f"Error during inference: {str(e)}")
+        raise e
+
+    # 转换回PIL图像
+    fake_image = (fake_image.cpu().squeeze(0) + 1) / 2.0
+    fake_image = transforms.ToPILImage()(fake_image)
+    
+    # 调整回原始尺寸
+    fake_image = fake_image.resize(original_size, Image.Resampling.BICUBIC)
+
+    return fake_image
 
 # 调整第二张图像img2的亮度和对比度，使其与第一张图像img1相似。
 def mapped(img1, img2):
@@ -130,5 +184,5 @@ if __name__ == '__main__':
         input_path = os.path.join(input_folder, filename)
         output_path = os.path.join(output_folder, filename)
         image_raw = Image.open(input_path).convert("RGB")
-        image_output = cyclegan_infer(model, image_raw)
+        image_output = cyclegan_unet_infer(model, image_raw)
         image_output.save(output_path)
