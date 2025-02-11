@@ -158,14 +158,16 @@ class CycleGANModel(BaseModel):
         # Identity loss
         if lambda_idt > 0:
             # G_A should be identity if real_B is fed: ||G_A(B) - B||
-            self.idt_A = self.netG_A(self.real_B)
+            self.idt_A, idt_loss_vq_A = self.netG_A(self.real_B)
             self.loss_idt_A = self.criterionIdt(self.idt_A, self.real_B) * lambda_B * lambda_idt
             # G_B should be identity if real_A is fed: ||G_B(A) - A||
-            self.idt_B = self.netG_B(self.real_A)
+            self.idt_B, idt_loss_vq_B = self.netG_B(self.real_A)
             self.loss_idt_B = self.criterionIdt(self.idt_B, self.real_A) * lambda_A * lambda_idt
         else:
             self.loss_idt_A = 0
             self.loss_idt_B = 0
+            idt_loss_vq_A = 0
+            idt_loss_vq_B = 0
 
         # GAN loss D_A(G_A(A))
         self.loss_G_A = self.criterionGAN(self.netD_A(self.fake_B), True)
@@ -176,7 +178,7 @@ class CycleGANModel(BaseModel):
         # Backward cycle loss || G_A(G_B(B)) - B||
         self.loss_cycle_B = self.criterionCycle(self.rec_B, self.real_B) * lambda_B
         # VQ损失
-        self.loss_vq = (self.loss_vq_A + self.loss_vq_B) * lambda_vq
+        self.loss_vq = (self.loss_vq_A + self.loss_vq_B + idt_loss_vq_A + idt_loss_vq_B) * lambda_vq
         # combined loss and calculate gradients
         self.loss_G = self.loss_G_A + self.loss_G_B + self.loss_cycle_A + self.loss_cycle_B + self.loss_idt_A + self.loss_idt_B + self.loss_vq
         self.loss_G.backward()

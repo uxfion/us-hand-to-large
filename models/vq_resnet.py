@@ -181,8 +181,8 @@ class VQResnetGenerator(nn.Module):
             nn.Tanh()
         )
 
-        self.vq1_match = nn.Conv2d(embed_dim, ngf * 2, 1)  # 64 -> 128
-        self.vq2_match = nn.Conv2d(embed_dim, ngf * 4, 1)  # 64 -> 256 (如果需要)
+        # self.vq1_match = nn.Conv2d(embed_dim, ngf * 2, 1)  # 64 -> 128
+        # self.vq2_match = nn.Conv2d(embed_dim, ngf * 4, 1)  # 64 -> 256 (如果需要)
 
     def forward(self, x):
         """Forward function
@@ -204,8 +204,8 @@ class VQResnetGenerator(nn.Module):
         quant1 = self.vq1_prep(x)
         quant1, diff1, _ = self.vq1(quant1.permute(0, 2, 3, 1))
         quant1 = quant1.permute(0, 3, 1, 2)
-        quant1 = self.vq1_match(quant1)  # 调整通道数
-        x = x + self.vq1_post(quant1)  # Skip connection around VQ
+        quant1 = self.vq1_post(quant1)  # 64 -> 128
+        x = x + quant1  # 现在维度匹配了
         
         # Second downsample
         x = self.down2(x)  # 64x64
@@ -218,8 +218,8 @@ class VQResnetGenerator(nn.Module):
         quant2 = self.vq2_prep(x)
         quant2, diff2, _ = self.vq2(quant2.permute(0, 2, 3, 1))
         quant2 = quant2.permute(0, 3, 1, 2)
-        quant2 = self.vq2_match(quant2)  # 调整通道数
-        x = x + self.vq2_post(quant2)  # Skip connection around VQ
+        quant2 = self.vq2_post(quant2)  # 64 -> 256
+        x = x + quant2  # 现在维度匹配了
         
         # Third ResBlock group
         x_64 = x  # Store for skip connection
@@ -231,9 +231,7 @@ class VQResnetGenerator(nn.Module):
         x = x + x_128  # Skip connection from first level
         
         # Fourth ResBlock group
-        quant1_matched = self.vq1_match(quant1.detach())  # 确保通道数匹配
-        x = x + quant1_matched  # Skip connection from VQ1
-        # x = x + quant1.detach()
+        x = x + quant1.detach()
         for res_block in self.res_blocks4:
             x = res_block(x)
             
