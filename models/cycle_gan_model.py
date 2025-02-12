@@ -53,7 +53,7 @@ class CycleGANModel(BaseModel):
         BaseModel.__init__(self, opt)
         # specify the training losses you want to print out. The training/test scripts will call <BaseModel.get_current_losses>
         self.loss_names = ['D_A', 'G_A', 'cycle_A', 'idt_A', 'D_B', 'G_B', 'cycle_B', 'idt_B']
-        self.loss_names.extend(['vq_A', 'vq_B'])
+        self.loss_names.extend(['vq_A', 'idt_vq_A', 'vq'])
         # specify the images you want to save/display. The training/test scripts will call <BaseModel.get_current_visuals>
         visual_names_A = ['real_A', 'fake_B', 'rec_A']
         visual_names_B = ['real_B', 'fake_A', 'rec_B']
@@ -158,7 +158,7 @@ class CycleGANModel(BaseModel):
         # Identity loss
         if lambda_idt > 0:
             # G_A should be identity if real_B is fed: ||G_A(B) - B||
-            self.idt_A, idt_loss_vq_A = self.netG_A(self.real_B)
+            self.idt_A, self.loss_idt_vq_A = self.netG_A(self.real_B)
             self.loss_idt_A = self.criterionIdt(self.idt_A, self.real_B) * lambda_B * lambda_idt
             # G_B should be identity if real_A is fed: ||G_B(A) - A||
             self.idt_B = self.netG_B(self.real_A)
@@ -177,7 +177,8 @@ class CycleGANModel(BaseModel):
         # Backward cycle loss || G_A(G_B(B)) - B||
         self.loss_cycle_B = self.criterionCycle(self.rec_B, self.real_B) * lambda_B
         # VQ损失
-        self.loss_vq = (self.loss_vq_A + self.loss_vq_B + idt_loss_vq_A + idt_loss_vq_B) * lambda_vq
+        #  + idt_loss_vq_B 是没有的
+        self.loss_vq = (self.loss_vq_A + self.loss_idt_vq_A) * lambda_vq
         # combined loss and calculate gradients
         self.loss_G = self.loss_G_A + self.loss_G_B + self.loss_cycle_A + self.loss_cycle_B + self.loss_idt_A + self.loss_idt_B + self.loss_vq
         self.loss_G.backward()
