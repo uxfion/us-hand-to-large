@@ -114,10 +114,13 @@ def main():
     
     # 定义需要评估的文件夹
     folders_to_evaluate = {
-        'original': os.path.join(base_path, 'datasets/all/test'),
-        'resnet_9block': os.path.join(base_path, 'results/test_1.raw_rm_arrow_a401'),
-        'unet256': os.path.join(base_path, 'results/test_2.raw_unet256_3090'),
-        'hybrid_restormer': os.path.join(base_path, 'results/test_xxx.hybrid_restormer_1')
+        # 'original': os.path.join(base_path, 'datasets/all/test'),
+        # 'resnet_9block': os.path.join(base_path, 'results/test_1.raw_rm_arrow_a401'),
+        # 'unet256_resize': os.path.join(base_path, 'results/test_2.raw_unet256_resize_256_3090'),
+        # 'unet256_pad': os.path.join(base_path, 'results/test_2.raw_unet256_pad_1024_3090'),
+        # 'hybrid_restormer': os.path.join(base_path, 'results/test_xxx.hybrid_restormer_1'),
+        'vq_resnet_resize': os.path.join(base_path, 'results/test_3.vq_resnet_resize_256_3090'),
+        'vq_resnet_up_4x': os.path.join(base_path, 'results/test_3.vq_resnet_up_4x_3090'),
     }
     
     # FID参考文件夹（高清Ground Truth图像）
