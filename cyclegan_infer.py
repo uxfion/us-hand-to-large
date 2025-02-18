@@ -88,7 +88,6 @@ def pad_to_next_power_2(image, base=256, max_size=None):
     
     # 创建新画布
     padded = Image.new(image.mode, (new_w, new_h))
-    # 使用反射填充
     padded.paste(image, (0, 0))
 
     # 如果设置了max_size且尺寸超过限制，进行缩放
@@ -106,7 +105,7 @@ def pad_to_next_power_2(image, base=256, max_size=None):
     # 返回填充后的图像和原始尺寸信息
     return padded, (w, h)
 
-def cyclegan_unet_infer(model, image_raw):
+def cyclegan_single_output_infer(model, image_raw):
     """
     UNet 推理函数，使用填充方案处理任意尺寸输入
     
@@ -141,22 +140,22 @@ def cyclegan_unet_infer(model, image_raw):
     
     # 推理
     with torch.no_grad():
-        model.eval()  # 确保模型在评估模式
+        # model.eval()  # 确保模型在评估模式
         fake_image = model.netG(image)
         
-        # 转回 CPU 并处理
-        fake_image = fake_image.cpu().squeeze(0)
-        fake_image = (fake_image + 1) / 2.0
-        fake_image = torch.clamp(fake_image, 0, 1)
-        fake_image = transforms.ToPILImage()(fake_image)
-        
-        # 裁剪回原始尺寸
-        fake_image = fake_image.crop((0, 0, orig_w, orig_h))
+    # 转回 CPU 并处理
+    fake_image = fake_image.cpu().squeeze(0)
+    fake_image = (fake_image + 1) / 2.0
+    fake_image = torch.clamp(fake_image, 0, 1)
+    fake_image = transforms.ToPILImage()(fake_image)
+    
+    # 裁剪回原始尺寸
+    fake_image = fake_image.crop((0, 0, orig_w, orig_h))
     
     return fake_image
 
 
-def cyclegan_vq_infer(model, image_raw):
+def cyclegan_drop_others_infer(model, image_raw):
     """
     VQ-ResNet 全画幅推理函数
     
@@ -175,7 +174,7 @@ def cyclegan_vq_infer(model, image_raw):
         image_raw = image_raw.convert('RGB')
     
     # 填充图像到256的倍数
-    padded_image, (orig_w, orig_h) = pad_to_next_power_2(image_raw, base=4, max_size=256)
+    padded_image, (orig_w, orig_h) = pad_to_next_power_2(image_raw, base=4, max_size=1024)
     # 打印尺寸信息用于调试
     print(f"Original size: {image_raw.size}, Padded size: {padded_image.size}")
 
@@ -188,19 +187,12 @@ def cyclegan_vq_infer(model, image_raw):
     
     # 转换图像
     image = transform(padded_image)
-    image = image.unsqueeze(0)
+    image = image.unsqueeze(0).to(device)
     
-    # 执行推理
-    try:
-        with torch.no_grad():
-            # 确保数据在正确的设备上
-            device = next(model.netG.parameters()).device
-            image = image.to(device)
-            
-            fake_image, _ = model.netG(image)
-    except RuntimeError as e:
-        print(f"Error during inference: {str(e)}")
-        raise e
+
+    with torch.no_grad():
+        fake_image, _ = model.netG(image)
+
     
     # 转换回PIL图像
     fake_image = (fake_image.cpu().squeeze(0) + 1) / 2.0
@@ -261,5 +253,6 @@ if __name__ == '__main__':
         input_path = os.path.join(input_folder, filename)
         output_path = os.path.join(output_folder, filename)
         image_raw = Image.open(input_path).convert("RGB")
-        image_output = cyclegan_vq_infer(model, image_raw)
+        # image_output = cyclegan_single_output_infer(model, image_raw)
+        image_output = cyclegan_drop_others_infer(model, image_raw)
         image_output.save(output_path)

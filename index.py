@@ -72,10 +72,12 @@ class ImageQualityEvaluator:
             print(f"Error calculating FID: {str(e)}")
             return None
 
-def save_results(all_results, output_dir='evaluation_results'):
+def save_results(all_results, output_dir='results/index'):
     """保存评估结果"""
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    output_dir = os.path.join(output_dir, timestamp)
     os.makedirs(output_dir, exist_ok=True)
+
     
     # 保存总结结果为CSV
     summary_df = pd.DataFrame.from_dict(all_results['summary'], orient='index')
@@ -114,17 +116,18 @@ def main():
     
     # 定义需要评估的文件夹
     folders_to_evaluate = {
-        # 'original': os.path.join(base_path, 'datasets/all/test'),
-        # 'resnet_9block': os.path.join(base_path, 'results/test_1.raw_rm_arrow_a401'),
+        'original': os.path.join(base_path, 'datasets/all/test'),
+        'resnet_9block': os.path.join(base_path, 'results/test_1.resnet_9block_x4_3090'),
         # 'unet256_resize': os.path.join(base_path, 'results/test_2.raw_unet256_resize_256_3090'),
-        # 'unet256_pad': os.path.join(base_path, 'results/test_2.raw_unet256_pad_1024_3090'),
+        'unet_256': os.path.join(base_path, 'results/test_2.unet_256_x256_3090'),
         # 'hybrid_restormer': os.path.join(base_path, 'results/test_xxx.hybrid_restormer_1'),
-        'vq_resnet_resize': os.path.join(base_path, 'results/test_3.vq_resnet_resize_256_3090'),
-        'vq_resnet_up_4x': os.path.join(base_path, 'results/test_3.vq_resnet_up_4x_3090'),
+        'vq_resnet_max256': os.path.join(base_path, 'results/test_3.vq_resnet_x4_max256_3090'),
+        'vq_resnet_max512': os.path.join(base_path, 'results/test_3.vq_resnet_x4_max512_3090'),
+        'vq_resnet_max1024': os.path.join(base_path, 'results/test_3.vq_resnet_x4_max1024_act1000_3090'),
     }
     
     # FID参考文件夹（高清Ground Truth图像）
-    fid_ref_folder = os.path.join(base_path, 'datasets/all/fid_ref')
+    fid_ref_folder = os.path.join(base_path, 'datasets/all/trainB')
     
     # 初始化评估器
     evaluator = ImageQualityEvaluator()
