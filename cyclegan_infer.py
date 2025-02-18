@@ -80,7 +80,7 @@ def cyclegan_raw_infer(model, image_raw):
 
     return fake_image
 
-def pad_to_next_power_2(image, base=256):
+def pad_to_next_power_2(image, base=256, max_size=None):
     """填充图像到下一个base的倍数，保持图像内容不变"""
     w, h = image.size
     new_w = ((w - 1) // base + 1) * base
@@ -90,6 +90,18 @@ def pad_to_next_power_2(image, base=256):
     padded = Image.new(image.mode, (new_w, new_h))
     # 使用反射填充
     padded.paste(image, (0, 0))
+
+    # 如果设置了max_size且尺寸超过限制，进行缩放
+    if max_size is not None and (new_w > max_size or new_h > max_size):
+        # 计算缩放比例
+        ratio = max_size / max(new_w, new_h)
+        final_w = int(new_w * ratio)
+        final_h = int(new_h * ratio)
+        # 确保缩放后的尺寸也是base的倍数
+        final_w = ((final_w - 1) // base + 1) * base
+        final_h = ((final_h - 1) // base + 1) * base
+        # 缩放图像
+        padded = padded.resize((final_w, final_h), Image.Resampling.LANCZOS)
     
     # 返回填充后的图像和原始尺寸信息
     return padded, (w, h)
@@ -145,52 +157,6 @@ def cyclegan_unet_infer(model, image_raw):
 
 
 def cyclegan_vq_infer(model, image_raw):
-    # 保存原始尺寸
-    original_size = image_raw.size
-    
-    # 确保输入图像尺寸是4的倍数
-    def make_size_divisible_by_4(size):
-        return tuple(s - (s % 4) for s in size)
-    
-    # 计算新的目标尺寸
-    # 确保是4的倍数，且不超过256
-    target_size = make_size_divisible_by_4((
-        min(256, original_size[0] - (original_size[0] % 4)),
-        min(256, original_size[1] - (original_size[1] % 4))
-    ))
-    
-    # 转换为RGB并调整大小
-    if image_raw.mode != 'RGB':
-        image_raw = image_raw.convert('RGB')
-    image_resized = image_raw.resize(target_size, Image.Resampling.BICUBIC)
-    
-    # 打印调试信息
-    print(f"Original size: {original_size}")
-    print(f"Resized to: {target_size}")
-    
-    # 标准化转换
-    transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-    ])
-    
-    image = transform(image_resized)
-    image = image.unsqueeze(0)
-    
-    # 执行推理
-    with torch.no_grad():
-        fake_image, _ = model.netG(image.to("cuda:0"))
-    
-    # 转换回PIL图像
-    fake_image = (fake_image.cpu().squeeze(0) + 1) / 2.0
-    fake_image = transforms.ToPILImage()(fake_image)
-    
-    # 调整回原始尺寸
-    fake_image = fake_image.resize(original_size, Image.Resampling.BICUBIC)
-    
-    return fake_image
-
-def cyclegan_new_vq_infer(model, image_raw):
     """
     VQ-ResNet 全画幅推理函数
     
@@ -204,25 +170,15 @@ def cyclegan_new_vq_infer(model, image_raw):
     # 保存原始尺寸
     original_size = image_raw.size
     
-    # 确保输入图像尺寸是4的倍数
-    def make_size_divisible_by_4(size):
-        return tuple(s + (4 - (s % 4)) if s % 4 != 0 else s for s in size)
-    
-    # 计算需要的填充尺寸
-    target_size = make_size_divisible_by_4(original_size)
-    
     # 转换为RGB
     if image_raw.mode != 'RGB':
         image_raw = image_raw.convert('RGB')
     
-    # 如果需要，进行填充
-    if target_size != original_size:
-        # 创建新画布并粘贴原图
-        padded_image = Image.new(image_raw.mode, target_size)
-        padded_image.paste(image_raw, (0, 0))
-        print(f"Padded from {original_size} to {target_size}")
-    else:
-        padded_image = image_raw
+    # 填充图像到256的倍数
+    padded_image, (orig_w, orig_h) = pad_to_next_power_2(image_raw, base=4, max_size=256)
+    # 打印尺寸信息用于调试
+    print(f"Original size: {image_raw.size}, Padded size: {padded_image.size}")
+
     
     # 标准化转换
     transform = transforms.Compose([
@@ -234,9 +190,6 @@ def cyclegan_new_vq_infer(model, image_raw):
     image = transform(padded_image)
     image = image.unsqueeze(0)
     
-    # 确保模型在评估模式
-    model.netG.eval()
-    
     # 执行推理
     try:
         with torch.no_grad():
@@ -244,10 +197,7 @@ def cyclegan_new_vq_infer(model, image_raw):
             device = next(model.netG.parameters()).device
             image = image.to(device)
             
-            # 打印调试信息
-            print(f"Input tensor shape: {image.shape}")
             fake_image, _ = model.netG(image)
-            print(f"Output tensor shape: {fake_image.shape}")
     except RuntimeError as e:
         print(f"Error during inference: {str(e)}")
         raise e
@@ -257,10 +207,9 @@ def cyclegan_new_vq_infer(model, image_raw):
     fake_image = torch.clamp(fake_image, 0, 1)  # 确保像素值在有效范围内
     fake_image = transforms.ToPILImage()(fake_image)
     
-    # 如果进行了填充，裁剪回原始尺寸
-    if target_size != original_size:
-        fake_image = fake_image.crop((0, 0, original_size[0], original_size[1]))
-    
+    # fake_image = fake_image.crop((0, 0, orig_w, orig_h))
+    fake_image = fake_image.resize(original_size, Image.Resampling.LANCZOS)
+
     return fake_image
 
 # 调整第二张图像img2的亮度和对比度，使其与第一张图像img1相似。
@@ -312,5 +261,5 @@ if __name__ == '__main__':
         input_path = os.path.join(input_folder, filename)
         output_path = os.path.join(output_folder, filename)
         image_raw = Image.open(input_path).convert("RGB")
-        image_output = cyclegan_new_vq_infer(model, image_raw)
+        image_output = cyclegan_vq_infer(model, image_raw)
         image_output.save(output_path)
