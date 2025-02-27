@@ -29,7 +29,7 @@ def load_cyclegan_model():
     if '--dataroot' not in sys.argv:
         sys.argv += ['--dataroot', './dataset/all/test']
     if '--name' not in sys.argv:
-        sys.argv += ['--name', '1.raw_rm_arrow']
+        sys.argv += ['--name', '1.raw_rm_arrow_a401']
     if '--gpu_ids' not in sys.argv:
         sys.argv += ['--gpu_ids', '0']
     if '--model' not in sys.argv:
@@ -121,7 +121,7 @@ def cyclegan_single_output_infer(model, image_raw):
         image_raw = image_raw.convert('RGB')
     
     # 填充图像到256的倍数
-    padded_image, (orig_w, orig_h) = pad_to_next_power_2(image_raw, base=256)
+    padded_image, (orig_w, orig_h) = pad_to_next_power_2(image_raw, base=4)
     
     # 打印尺寸信息用于调试
     print(f"Original size: {image_raw.size}, Padded size: {padded_image.size}")
@@ -174,7 +174,7 @@ def cyclegan_drop_others_infer(model, image_raw):
         image_raw = image_raw.convert('RGB')
     
     # 填充图像到256的倍数
-    padded_image, (orig_w, orig_h) = pad_to_next_power_2(image_raw, base=4, max_size=1024)
+    padded_image, (orig_w, orig_h) = pad_to_next_power_2(image_raw, base=4, max_size=256)
     # 打印尺寸信息用于调试
     print(f"Original size: {image_raw.size}, Padded size: {padded_image.size}")
 
@@ -244,15 +244,15 @@ if __name__ == '__main__':
     # image_output.save("./datasets/xijing/fake/1-LR-0.jpg")
 
     model = load_cyclegan_model()
-    input_folder = './datasets/all/test/'  # 输入文件夹路径
+    input_folder = '/root/Lecter/dcm-convert/degrade/t1090000101al-dir_degrade'  # 输入文件夹路径
     files = [f for f in os.listdir(input_folder) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]  # 获取图片文件列表
-    output_folder = f'./results/test'  # 输出文件夹路径
+    output_folder = f'./results/test-resnet-t1090000101al-dir'  # 输出文件夹路径
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
     for filename in tqdm(files, desc="Processing Images"):  # 使用tqdm显示进度
         input_path = os.path.join(input_folder, filename)
         output_path = os.path.join(output_folder, filename)
         image_raw = Image.open(input_path).convert("RGB")
-        # image_output = cyclegan_single_output_infer(model, image_raw)
-        image_output = cyclegan_drop_others_infer(model, image_raw)
+        image_output = cyclegan_single_output_infer(model, image_raw)
+        # image_output = cyclegan_drop_others_infer(model, image_raw)
         image_output.save(output_path)

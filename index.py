@@ -124,6 +124,12 @@ def main():
         'vq_resnet_max256': os.path.join(base_path, 'results/test_3.vq_resnet_x4_max256_3090'),
         'vq_resnet_max512': os.path.join(base_path, 'results/test_3.vq_resnet_x4_max512_3090'),
         'vq_resnet_max1024': os.path.join(base_path, 'results/test_3.vq_resnet_x4_max1024_act1000_3090'),
+        'vq_resnet_patch256_overlap32': os.path.join(base_path, 'results/test_patch256_overlap32'),
+        'vq_resnet_patch256_overlap64': os.path.join(base_path, 'results/test_patch256_overlap64'),
+        'vq_resnet_patch256_overlap128': os.path.join(base_path, 'results/test_patch256_overlap128'),
+        'vq_resnet_patch512_overlap64': os.path.join(base_path, 'results/test_patch512_overlap64'),
+        'vq_resnet_patch512_overlap128': os.path.join(base_path, 'results/test_patch512_overlap128'),
+        'vq_resnet_patch512_overlap256': os.path.join(base_path, 'results/test_patch512_overlap256'),
     }
     
     # FID参考文件夹（高清Ground Truth图像）
