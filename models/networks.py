@@ -4,6 +4,7 @@ from torch.nn import init
 import functools
 from torch.optim import lr_scheduler
 from .vq_resnet import VQResnetGenerator
+from .vq_atten_resnet import VQAttenResnetGenerator
 
 
 ###############################################################################
@@ -159,6 +160,8 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, in
     elif netG == 'vq_resnet':
         net = VQResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer,
                                       use_dropout=use_dropout)
+    elif netG == 'vq_atten_resnet':
+        net = VQAttenResnetGenerator(input_nc, output_nc)
     else:
         raise NotImplementedError('Generator model name [%s] is not recognized' % netG)
     return init_net(net, init_type, init_gain, gpu_ids)
