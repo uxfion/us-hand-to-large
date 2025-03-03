@@ -148,8 +148,8 @@ class VQCycleGANModel(BaseModel, nn.Module):
             
             # VQ损失相关参数
             self.register_buffer('current_epoch', torch.tensor(0))
-            self.vq_weight_max = opt.lambda_vq if hasattr(opt, 'lambda_vq') else 5.0
-            self.vq_ramp_epochs = opt.vq_ramp_epochs if hasattr(opt, 'vq_ramp_epochs') else 10000
+            self.vq_weight_max = opt.lambda_vq if hasattr(opt, 'lambda_vq') else 1.0  # 从5.0降至1.0
+            self.vq_ramp_epochs = opt.vq_ramp_epochs if hasattr(opt, 'vq_ramp_epochs') else 1000  # 更慢的权重增长
             self.r1_gamma = opt.r1_gamma if hasattr(opt, 'r1_gamma') else 10.0
             self.lambda_perceptual = opt.lambda_perceptual if hasattr(opt, 'lambda_perceptual') else 1.0
             self.codebook_reg_weight = opt.codebook_reg if hasattr(opt, 'codebook_reg') else 0.1
@@ -181,12 +181,13 @@ class VQCycleGANModel(BaseModel, nn.Module):
         return grad_penalty
 
     def compute_adaptive_weight(self, recon_loss, g_loss, last_layer):
-        """计算自适应权重，平衡重建与对抗损失"""
+        """根据Taming Transformers设计的自适应权重计算方法"""
         recon_grads = torch.autograd.grad(recon_loss, last_layer, retain_graph=True)[0]
         g_grads = torch.autograd.grad(g_loss, last_layer, retain_graph=True)[0]
         
         d_weight = torch.norm(recon_grads) / (torch.norm(g_grads) + 1e-6)
-        d_weight = torch.clamp(d_weight, 0.0, 1e4).detach()
+        d_weight = torch.clamp(d_weight, 0.0, 10.0).detach()  # 从1e4降至10
+        
         return d_weight
 
     def backward_D_basic(self, netD, real, fake):
@@ -221,7 +222,7 @@ class VQCycleGANModel(BaseModel, nn.Module):
         self.loss_D_B = self.backward_D_basic(self.netD_B, self.real_A, fake_A)
 
     def get_current_vq_weight(self):
-        """获取当前VQ损失权重，随着训练进行逐渐增加"""
+        """渐进式VQ权重调整"""
         if self.current_epoch < self.vq_ramp_epochs:
             return self.vq_weight_max * (self.current_epoch / self.vq_ramp_epochs)
         else:
@@ -245,6 +246,8 @@ class VQCycleGANModel(BaseModel, nn.Module):
         lambda_A = self.opt.lambda_A
         lambda_B = self.opt.lambda_B
         
+        # VQ损失相关参数
+        codebook_weight = 1.0  # 修改为固定值，Taming Transformers使用的默认值
         # Identity loss
         if lambda_idt > 0:
             # G_A应当在输入B时保持身份映射: ||G_A(B) - B||
@@ -275,27 +278,31 @@ class VQCycleGANModel(BaseModel, nn.Module):
         # 后向循环一致性损失 || G_A(G_B(B)) - B||
         self.loss_cycle_B = self.criterionCycle(self.rec_B, self.real_B) * lambda_B + self.loss_perceptual_B
         
-        # 使用自适应权重计算VQ损失
+        # 计算重建和对抗损失
         recon_loss = self.loss_cycle_A + self.loss_cycle_B
         g_loss = self.loss_G_A + self.loss_G_B
         
-        # 使用辅助方法获取模型
+        # 计算自适应权重 - 仅用于对抗损失，不用于VQ损失
         unwrapped_model = self.get_unwrapped_model(self.netG_A)
         last_layer = unwrapped_model.get_last_layer()
         adaptive_weight = self.compute_adaptive_weight(recon_loss, g_loss, last_layer)
+        adaptive_weight = torch.clamp(adaptive_weight, 0.0, 10.0)  # 限制在合理范围内
         
-        # 计算VQ损失
-        vq_weight = self.get_current_vq_weight() * adaptive_weight
-        self.loss_vq = (self.loss_vq_A + self.loss_idt_vq_A) * vq_weight
+        # 采用Taming Transformers风格的VQ损失处理
+        vq_loss = self.loss_vq_A + self.loss_idt_vq_A
+        self.loss_vq = codebook_weight * vq_loss.mean()  # 直接使用mean()归一化
         
         # 码本正则化
         self.loss_codebook_reg = unwrapped_model.get_codebook_reg_loss() * self.codebook_reg_weight
         
-        # 组合损失并计算梯度
-        self.loss_G = (self.loss_G_A + self.loss_G_B + 
-                    self.loss_cycle_A + self.loss_cycle_B + 
-                    self.loss_idt_A + self.loss_idt_B + 
-                    self.loss_vq + self.loss_codebook_reg)
+        # 组合损失 - 自适应权重仅应用于对抗损失，不compute_adaptive_weight应用于VQ损失
+        self.loss_G = (
+            self.loss_G_A + self.loss_G_B + 
+            self.loss_cycle_A + self.loss_cycle_B + 
+            self.loss_idt_A + self.loss_idt_B + 
+            adaptive_weight * (self.loss_G_A + self.loss_G_B) +  # 对抗损失使用自适应权重
+            self.loss_vq + self.loss_codebook_reg
+        )
         self.loss_G.backward()
 
     def optimize_parameters(self):
@@ -318,14 +325,3 @@ class VQCycleGANModel(BaseModel, nn.Module):
         
         # 更新epoch计数
         self.current_epoch += 1
-    
-    def get_current_visuals(self):
-        """获取当前可视化结果与VQ统计信息"""
-        visuals = super().get_current_visuals()
-        
-        # 添加VQ统计信息到可视化结果
-        if hasattr(self, 'vq_stats_A'):
-            for key, value in self.vq_stats_A.items():
-                visuals[f'vq_stat_{key}'] = value.detach() if torch.is_tensor(value) else value
-                
-        return visuals

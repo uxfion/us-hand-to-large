@@ -54,7 +54,7 @@ class VectorQuantizer(nn.Module):
         # 双向设计可以更好地稳定训练
         q_loss = F.mse_loss(z_q, z.detach())
         commitment_loss = F.mse_loss(z, z_q.detach()) 
-        vq_loss = q_loss + self.beta * commitment_loss
+        vq_loss = q_loss * self.beta + commitment_loss
         
         # Straight-Through估计器
         z_q = z + (z_q - z).detach()
