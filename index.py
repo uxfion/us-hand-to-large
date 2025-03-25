@@ -130,7 +130,8 @@ def main():
         # 'vq_resnet_patch512_overlap64': os.path.join(base_path, 'results/test_patch512_overlap64'),
         # 'vq_resnet_patch512_overlap128': os.path.join(base_path, 'results/test_patch512_overlap128'),
         # 'vq_resnet_patch512_overlap256': os.path.join(base_path, 'results/test_patch512_overlap256'),
-        'original': os.path.join(base_path, 'datasets/all/test'),
+        # 'original': os.path.join(base_path, 'datasets/all/test'),
+
         # 'resnet_9block': os.path.join(base_path, 'results/test_1.resnet_9block_a401_x4'),
         # # 'unet256_resize': os.path.join(base_path, 'results/test_2.raw_unet256_resize_256_3090'),
         # 'unet_256': os.path.join(base_path, 'results/test_2.unet_256_3090_x256'),
@@ -151,8 +152,16 @@ def main():
         # 'vq_resnet_concat_paired_max512': os.path.join(base_path, 'results/test_grayscale_x4_max512'),
         # 'vq_resnet_concat_paired_max1024': os.path.join(base_path, 'results/test_grayscale_x4_max1024'),
         # 'vq_hybrid_restormer': os.path.join(base_path, 'results/test_xxx.hybrid_restormer_1'),
-        "test_LR": os.path.join(base_path, 'datasets/split/test/test_LR'),
-        "test_HR": os.path.join(base_path, 'datasets/split/test/test_HR'),
+        # "test_LR": os.path.join(base_path, 'datasets/split/test/test_LR'),
+        # "test_HR": os.path.join(base_path, 'datasets/split/test/test_HR'),
+
+        # 'input': os.path.join(base_path, 'datasets/split/test/test_semi_paired_LR'),
+        # 'gt': os.path.join(base_path, 'datasets/split/test/test_semi_paired_HR'),
+        # '3.vq_resnet_v1_unpaired': "/root/Lecter/cyclegan-exp/us-hand-to-large/results/results_semi_paired/test_3.vq_resnet_v1_unpaired_x4max256",
+        # '5.vq_resnet_v1_un_paired': "/root/Lecter/cyclegan-exp/us-hand-to-large/results/results_semi_paired/test_5.vq_resnet_v1_un_paired_x4max256",
+        # '6.vq_resnet_v1_semi_un_paired': "/root/Lecter/cyclegan-exp/us-hand-to-large/results/results_semi_paired/test_6.vq_resnet_v1_semi_un_paired_x4max256",
+        'trainA': os.path.join(base_path, 'datasets/all/trainA'),
+        'trainB': os.path.join(base_path, 'datasets/all/trainB'),
     }
     
     # FID参考文件夹（高清Ground Truth图像）

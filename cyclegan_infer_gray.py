@@ -10,6 +10,7 @@ from tqdm import tqdm
 import sys
 
 device='cuda:0' if torch.cuda.is_available() else 'cpu'
+# device='cpu'
 
 def load_cyclegan_model():
     # 手动注入命令行参数
@@ -143,7 +144,7 @@ def cyclegan_drop_others_grayscale_infer(model, image_raw):
         image_raw = image_raw.convert('L')
     
     # 填充图像到4的倍数
-    padded_image, (orig_w, orig_h) = pad_to_next_power_2(image_raw, base=4, max_size=1024)
+    padded_image, (orig_w, orig_h) = pad_to_next_power_2(image_raw, base=4, max_size=256)
     # 打印尺寸信息用于调试
     print(f"Original size: {image_raw.size}, Padded size: {padded_image.size}")
 
@@ -177,31 +178,17 @@ def cyclegan_drop_others_grayscale_infer(model, image_raw):
 
     return fake_image
 
-# 灰度图像直方图匹配函数
-def mapped_grayscale(img1, img2):
-    """
-    调整第二张灰度图像img2的亮度和对比度，使其与第一张图像img1相似
-    """
-    img1_pixels = np.sort(np.array(img1).flatten())
-    img2_pixels = np.sort(np.array(img2).flatten())
-
-    img1_low = float(img1_pixels[int(len(img1_pixels) * 0.05)])
-    img1_high = float(img1_pixels[int(len(img1_pixels) * 0.95)])
-    img2_low = float(img2_pixels[int(len(img2_pixels) * 0.05)])
-    img2_high = float(img2_pixels[int(len(img2_pixels) * 0.95)])
-
-    img2_array = np.array(img2, dtype=float)
-    scale_factor = ((img2_array - img2_low) / (img2_high - img2_low)) * (img1_high - img1_low) + img1_low
-    scale_factor = np.clip(scale_factor, 0, 255, out=scale_factor)
-
-    return Image.fromarray(scale_factor.astype(np.uint8))
 
 
 if __name__ == '__main__':
     model = load_cyclegan_model()
-    input_folder = '/root/Lecter/cyclegan-exp/us-hand-to-large/datasets/all/test'  # 输入文件夹路径
+    # input_folder = '/root/Lecter/cyclegan-exp/us-hand-to-large/datasets/split/test/test_semi_paired_LR'  # 输入文件夹路径
+    # input_folder = '/root/Lecter/cyclegan-exp/us-hand-to-large/datasets/split/test/test_only_LR'
+    # input_folder = '/root/Lecter/dcm-convert/t1090000101al_gauss_subsample-dir-resizeto512nearest'
+    input_folder = '/root/Lecter/dcm-convert/sort/origin/t1090000101al-dir_shrink2'
     files = [f for f in os.listdir(input_folder) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]  # 获取图片文件列表
-    output_folder = f'./results/test_grayscale'  # 输出文件夹路径
+    # output_folder = f'./results/results_semi_paired/1111'  # 输出文件夹路径
+    output_folder = f'./results/zhang/test_t1_shrink2_20250319'
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
     
