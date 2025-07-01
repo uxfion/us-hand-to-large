@@ -59,7 +59,7 @@ class MixedDataset(BaseDataset):
         # 设置各模式权重
         self.unaligned_weight = 1
         self.aligned_weight = 1
-        self.semi_paired_weight = 6
+        self.semi_paired_weight = 10
         
         # 计算基于权重的样本数量
         self.calculate_weighted_samples()

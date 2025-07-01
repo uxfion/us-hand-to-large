@@ -185,10 +185,15 @@ if __name__ == '__main__':
     # input_folder = '/root/Lecter/cyclegan-exp/us-hand-to-large/datasets/split/test/test_semi_paired_LR'  # 输入文件夹路径
     # input_folder = '/root/Lecter/cyclegan-exp/us-hand-to-large/datasets/split/test/test_only_LR'
     # input_folder = '/root/Lecter/dcm-convert/t1090000101al_gauss_subsample-dir-resizeto512nearest'
-    input_folder = '/root/Lecter/dcm-convert/sort/origin/t1090000101al-dir_shrink2'
+    # input_folder = '/root/Lecter/dcm-convert/sort/origin/t1090000101al-dir_shrink2'
+    # input_folder = "/root/exp/us-hand-to-large/datasets/xijing_split/test/test_semi_paired_LR"
+    input_folder = "/root/exp/us-hand-to-large/datasets/xijing_split/test/test_unpaired_LR"
+    # input_folder = "/root/exp/us-hand-to-large/datasets/zhang/origin/t1090000101al-dir_shrink4"  # 输入文件夹路径
     files = [f for f in os.listdir(input_folder) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]  # 获取图片文件列表
     # output_folder = f'./results/results_semi_paired/1111'  # 输出文件夹路径
-    output_folder = f'./results/zhang/test_t1_shrink2_20250319'
+    # output_folder = f'./results/xijing_test_epoch195_LR_SR_x4_max256'
+    output_folder = f'./results/xijing_test_LR_SR_x4_max256_unpaired'
+    # output_folder = "./results/zhang/t1090000101al-dir_shrink4_sr"
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
     
