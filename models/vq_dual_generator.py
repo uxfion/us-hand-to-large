@@ -159,12 +159,15 @@ class VQDualEnDecoderGenerator(nn.Module):
         # 解码
         output = self.decode(quantized, target_domain)
         
+        # TODO: if direction == 'BtoB':
+
         # 累积VQ损失（用于多次前向传播）
         if not hasattr(self, 'accumulated_vq_loss'):
             self.accumulated_vq_loss = 0
         self.accumulated_vq_loss = self.accumulated_vq_loss + vq_loss
         
         # 保存VQ相关信息供后续使用
+        # TODO: 码本利用率
         self.vq_loss = vq_loss
         self.perplexity = perplexity
         self.indices = indices

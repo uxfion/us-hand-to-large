@@ -79,19 +79,10 @@ class VQCycleGANModel(BaseModel):
 
         # 定义网络
         # 使用VQ双编解码器生成器
-        self.netG = VQDualEnDecoderGenerator(
-            input_nc=opt.input_nc,
-            output_nc=opt.output_nc,
-            ngf=opt.ngf,
-            norm_layer=networks.get_norm_layer(norm_type=opt.norm),
-            use_dropout=not opt.no_dropout,
-            n_blocks=9,  # 使用9个ResNet块
-            padding_type='reflect',
-            n_embed=opt.n_embed,
-            embed_dim=opt.embed_dim,
-            beta=opt.beta,
-            decay=opt.decay
-        ).to(self.device)
+
+        self.netG = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf, opt.netGab, opt.norm,
+                                        not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids,
+                                        opt.n_embed, opt.embed_dim, opt.beta, opt.decay)
         
         # 为了兼容性，创建别名
         self.netG_A = self.netG
@@ -209,10 +200,12 @@ class VQCycleGANModel(BaseModel):
         
         # VQ loss
         # 获取所有前向传播中累积的VQ损失
-        self.loss_vq = self.netG.get_vq_loss() * lambda_vq
+        # 如果网络被DataParallel包装，需要通过.module访问
+        vq_generator = self.netG.module if hasattr(self.netG, 'module') else self.netG
+        self.loss_vq = vq_generator.get_vq_loss() * lambda_vq
         
         # VQ perplexity (用于监控，不参与反向传播)
-        self.loss_vq_pp = self.netG.perplexity.mean() if hasattr(self.netG, 'perplexity') else 0
+        self.loss_vq_pp = vq_generator.perplexity.mean() if hasattr(vq_generator, 'perplexity') else 0
         
         # Combined loss
         self.loss_G = (self.loss_G_A + self.loss_G_B + 
@@ -220,6 +213,8 @@ class VQCycleGANModel(BaseModel):
                       self.loss_idt_A + self.loss_idt_B +
                       self.loss_rec_A + self.loss_rec_B +
                       self.loss_vq)
+        
+        # TODO: if xxx: self.loss_G += 
         
         self.loss_G.backward()
 
@@ -246,7 +241,8 @@ class VQCycleGANModel(BaseModel):
         visual_ret = super().get_current_visuals()
         
         # 添加VQ码本使用情况的可视化（可选）
-        if hasattr(self.netG, 'indices') and self.netG.indices is not None:
+        vq_generator = self.netG.module if hasattr(self.netG, 'module') else self.netG
+        if hasattr(vq_generator, 'indices') and vq_generator.indices is not None:
             # 可以在这里添加码本使用情况的可视化
             pass
             
@@ -254,34 +250,9 @@ class VQCycleGANModel(BaseModel):
     
     def evaluate_codebook(self):
         """评估VQ码本的使用情况"""
-        usage, usage_rate = self.netG.get_codebook_usage()
+        vq_generator = self.netG.module if hasattr(self.netG, 'module') else self.netG
+        usage, usage_rate = vq_generator.get_codebook_usage()
         if usage is not None:
             print(f"Codebook usage rate: {usage_rate:.2%}")
             print(f"Active codes: {(usage > 0).sum().item()}/{len(usage)}")
         return usage, usage_rate
-    
-    def train(self):
-        """设置模型为训练模式"""
-        self.netG.train()
-        if self.isTrain:
-            self.netD_A.train()
-            self.netD_B.train()
-    
-    def eval(self):
-        """设置模型为评估模式"""
-        self.netG.eval()
-        if self.isTrain:
-            self.netD_A.eval()
-            self.netD_B.eval()
-    
-    def test(self):
-        """测试时的前向传播（不计算梯度）"""
-        with torch.no_grad():
-            # 只进行必要的转换
-            self.fake_B = self.netG(self.real_A, direction='AtoB')
-            self.fake_A = self.netG(self.real_B, direction='BtoA')
-            
-            # 如果需要，也可以计算重建
-            if hasattr(self.opt, 'eval_rec') and self.opt.eval_rec:
-                self.recon_A = self.netG(self.real_A, direction='AtoA')
-                self.recon_B = self.netG(self.real_B, direction='BtoB')

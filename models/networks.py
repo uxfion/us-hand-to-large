@@ -4,6 +4,7 @@ from torch.nn import init
 import functools
 from torch.optim import lr_scheduler
 from .vq_resnet import VQResnetGenerator
+from .vq_dual_generator import VQDualEnDecoderGenerator
 
 
 ###############################################################################
@@ -166,7 +167,6 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, in
                                       use_dropout=use_dropout)
     elif netG == 'vq_dual':
         # 导入VQ双编解码器生成器
-        from .vq_dual_generator import VQDualEnDecoderGenerator
         net = VQDualEnDecoderGenerator(
             input_nc=input_nc,
             output_nc=output_nc,
