@@ -118,7 +118,8 @@ def init_net(net, init_type='normal', init_gain=0.02, gpu_ids=[]):
     return net
 
 
-def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, init_type='normal', init_gain=0.02, gpu_ids=[]):
+def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, init_type='normal', init_gain=0.02, gpu_ids=[],
+             n_embed=512, embed_dim=256, beta=0.25, decay=0.99):
     """Create a generator
 
     Parameters:
@@ -131,6 +132,10 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, in
         init_type (str)    -- the name of our initialization method.
         init_gain (float)  -- scaling factor for normal, xavier and orthogonal.
         gpu_ids (int list) -- which GPUs the network runs on: e.g., 0,1,2
+        n_embed (int) -- VQ码本大小（仅用于vq_dual）
+        embed_dim (int) -- VQ嵌入维度（仅用于vq_dual）
+        beta (float) -- VQ commitment loss权重（仅用于vq_dual）
+        decay (float) -- EMA衰减率（仅用于vq_dual）
 
     Returns a generator
 
@@ -159,6 +164,22 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, in
     elif netG == 'vq_resnet':
         net = VQResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer,
                                       use_dropout=use_dropout)
+    elif netG == 'vq_dual':
+        # 导入VQ双编解码器生成器
+        from .vq_dual_generator import VQDualEnDecoderGenerator
+        net = VQDualEnDecoderGenerator(
+            input_nc=input_nc,
+            output_nc=output_nc,
+            ngf=ngf,
+            norm_layer=norm_layer,
+            use_dropout=use_dropout,
+            n_blocks=9,
+            padding_type='reflect',
+            n_embed=n_embed,
+            embed_dim=embed_dim,
+            beta=beta,
+            decay=decay
+        )
     else:
         raise NotImplementedError('Generator model name [%s] is not recognized' % netG)
     return init_net(net, init_type, init_gain, gpu_ids)
