@@ -362,8 +362,9 @@ class EMAVectorQuantizer(nn.Module):
     def __init__(self, n_embed, embedding_dim, beta, decay=0.99, eps=1e-5,
                 remap=None, unknown_index="random"):
         super().__init__()
-        self.codebook_dim = codebook_dim
-        self.num_tokens = num_tokens
+        # TODO: qEMAVectorQuantizer类的num_tokens属性和其他不一致
+        self.codebook_dim = embedding_dim  # codebook_dim
+        self.num_tokens = n_embed  #num_tokens
         self.beta = beta
         self.embedding = EmbeddingEMA(self.num_tokens, self.codebook_dim, decay, eps)
 
