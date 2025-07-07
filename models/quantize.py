@@ -362,11 +362,16 @@ class EMAVectorQuantizer(nn.Module):
     def __init__(self, n_embed, embedding_dim, beta, decay=0.99, eps=1e-5,
                 remap=None, unknown_index="random"):
         super().__init__()
-        # TODO: qEMAVectorQuantizer类的num_tokens属性和其他不一致
-        self.codebook_dim = embedding_dim  # codebook_dim
-        self.num_tokens = n_embed  #num_tokens
+        # 使用统一的命名约定
+        self.n_embed = n_embed              # 码本大小
+        self.embedding_dim = embedding_dim   # 嵌入维度
         self.beta = beta
-        self.embedding = EmbeddingEMA(self.num_tokens, self.codebook_dim, decay, eps)
+        
+        # # 为了兼容性，也保留原有的属性名
+        # self.codebook_dim = embedding_dim
+        # self.num_tokens = n_embed
+        
+        self.embedding = EmbeddingEMA(n_embed, embedding_dim, decay, eps)
 
         self.remap = remap
         if self.remap is not None:
@@ -409,7 +414,7 @@ class EMAVectorQuantizer(nn.Module):
         # reshape z -> (batch, height, width, channel) and flatten
         #z, 'b c h w -> b h w c'
         z = rearrange(z, 'b c h w -> b h w c')
-        z_flattened = z.reshape(-1, self.codebook_dim)
+        z_flattened = z.reshape(-1, self.embedding_dim)
         
         # distances from z to embeddings e_j (z - e)^2 = z^2 + e^2 - 2 e * z
         d = z_flattened.pow(2).sum(dim=1, keepdim=True) + \
@@ -420,7 +425,7 @@ class EMAVectorQuantizer(nn.Module):
         encoding_indices = torch.argmin(d, dim=1)
 
         z_q = self.embedding(encoding_indices).view(z.shape)
-        encodings = F.one_hot(encoding_indices, self.num_tokens).type(z.dtype)     
+        encodings = F.one_hot(encoding_indices, self.n_embed).type(z.dtype)     
         avg_probs = torch.mean(encodings, dim=0)
         perplexity = torch.exp(-torch.sum(avg_probs * torch.log(avg_probs + 1e-10)))
 
@@ -432,7 +437,7 @@ class EMAVectorQuantizer(nn.Module):
             embed_sum = encodings.transpose(0,1) @ z_flattened            
             self.embedding.embed_avg_ema_update(embed_sum)
             #normalize embed_avg and update weight
-            self.embedding.weight_update(self.num_tokens)
+            self.embedding.weight_update(self.n_embed)
 
         # compute loss for embedding
         loss = self.beta * F.mse_loss(z_q.detach(), z) 

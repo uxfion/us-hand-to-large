@@ -3,7 +3,6 @@ import itertools
 from util.image_pool import ImagePool
 from .base_model import BaseModel
 from . import networks
-from .vq_dual_generator import VQDualEnDecoderGenerator
 
 
 class VQCycleGANModel(BaseModel):
@@ -29,8 +28,8 @@ class VQCycleGANModel(BaseModel):
                               help='weight for cycle loss (A -> B -> A)')
             parser.add_argument('--lambda_B', type=float, default=10.0, 
                               help='weight for cycle loss (B -> A -> B)')
-            parser.add_argument('--lambda_identity', type=float, default=0.5,
-                              help='use identity mapping.')
+            parser.add_argument('--lambda_identity', type=float, default=0.0,
+                              help='use identity mapping. Set to 0 for medical image enhancement.')
             
             # VQ相关参数
             parser.add_argument('--n_embed', type=int, default=512,
@@ -57,17 +56,22 @@ class VQCycleGANModel(BaseModel):
         BaseModel.__init__(self, opt)
         
         # 定义损失名称（用于打印和保存）
-        self.loss_names = ['D_A', 'G_A', 'cycle_A', 'idt_A', 
-                          'D_B', 'G_B', 'cycle_B', 'idt_B',
-                          'rec_A', 'rec_B', 'vq', 'vq_pp']  # 添加VQ相关损失
+        self.loss_names = ['D_A', 'G_A', 'cycle_A', 
+                          'D_B', 'G_B', 'cycle_B',
+                          'rec_A', 'rec_B', 'vq', 'vq_pp',
+                          'codebook_usage', 'avg_usage']  # 简化码本监控
+        
+        # 只有在使用identity loss时才添加
+        if self.isTrain and self.opt.lambda_identity > 0.0:
+            self.loss_names.extend(['idt_A', 'idt_B'])
         
         # 定义要保存/显示的图像
         visual_names_A = ['real_A', 'fake_B', 'rec_A', 'recon_A']  # 添加recon_A (A->A重建)
         visual_names_B = ['real_B', 'fake_A', 'rec_B', 'recon_B']  # 添加recon_B (B->B重建)
         
         if self.isTrain and self.opt.lambda_identity > 0.0:
-            visual_names_A.append('idt_B')
-            visual_names_B.append('idt_A')
+            visual_names_A.append('idt_A')  # real_B通过AtoB路径的结果
+            visual_names_B.append('idt_B')  # real_A通过BtoA路径的结果
 
         self.visual_names = visual_names_A + visual_names_B
         
@@ -78,11 +82,12 @@ class VQCycleGANModel(BaseModel):
             self.model_names = ['G']
 
         # 定义网络
-        # 使用VQ双编解码器生成器
-
-        self.netG = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf, opt.netGab, opt.norm,
-                                        not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids,
-                                        opt.n_embed, opt.embed_dim, opt.beta, opt.decay)
+        # 使用VQ双编解码器生成器，注意使用框架中的参数名
+        self.netG = networks.define_G(
+            opt.input_nc, opt.output_nc, opt.ngf, opt.netG, opt.norm,
+            not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids,
+            opt.n_embed, opt.embed_dim, opt.beta, opt.decay
+        )
         
         # 为了兼容性，创建别名
         self.netG_A = self.netG
@@ -96,6 +101,10 @@ class VQCycleGANModel(BaseModel):
             self.netD_B = networks.define_D(opt.input_nc, opt.ndf, opt.netD,
                                           opt.n_layers_D, opt.norm, opt.init_type, 
                                           opt.init_gain, self.gpu_ids)
+            
+            # 初始化码本监控指标（使用tensor以便在不同设备间传递）
+            self.loss_codebook_usage = torch.tensor(0.0, device=self.device)
+            self.loss_avg_usage = torch.tensor(0.0, device=self.device)
 
         if self.isTrain:
             if opt.lambda_identity > 0.0:
@@ -176,11 +185,12 @@ class VQCycleGANModel(BaseModel):
         
         # Identity loss
         if lambda_idt > 0:
-            # G应该对真实图像保持恒等映射
-            self.idt_A = self.netG(self.real_B, direction='BtoB')
+            # G_A(real_B)应该保持real_B不变（B已经是高质量了，不需要增强）
+            self.idt_A = self.netG(self.real_B, direction='AtoB')  # 注意：是AtoB路径！
             self.loss_idt_A = self.criterionIdt(self.idt_A, self.real_B) * lambda_B * lambda_idt
             
-            self.idt_B = self.netG(self.real_A, direction='AtoA')
+            # G_B(real_A)应该保持real_A不变（A已经是低质量了，不需要退化）
+            self.idt_B = self.netG(self.real_A, direction='BtoA')  # 注意：是BtoA路径！
             self.loss_idt_B = self.criterionIdt(self.idt_B, self.real_A) * lambda_A * lambda_idt
         else:
             self.loss_idt_A = 0
@@ -199,13 +209,21 @@ class VQCycleGANModel(BaseModel):
         self.loss_rec_B = self.criterionRec(self.recon_B, self.real_B) * lambda_rec_B
         
         # VQ loss
-        # 获取所有前向传播中累积的VQ损失
-        # 如果网络被DataParallel包装，需要通过.module访问
+        # 处理DataParallel的情况
         vq_generator = self.netG.module if hasattr(self.netG, 'module') else self.netG
         self.loss_vq = vq_generator.get_vq_loss() * lambda_vq
         
         # VQ perplexity (用于监控，不参与反向传播)
-        self.loss_vq_pp = vq_generator.perplexity.mean() if hasattr(vq_generator, 'perplexity') else 0
+        if hasattr(vq_generator, 'perplexity') and vq_generator.perplexity is not None:
+            self.loss_vq_pp = vq_generator.perplexity.mean()
+        else:
+            self.loss_vq_pp = torch.tensor(0.0)
+        
+        # 初始化码本监控指标（如果还没有值）
+        if not hasattr(self, 'loss_codebook_usage'):
+            self.loss_codebook_usage = torch.tensor(0.0, device=self.device)
+        if not hasattr(self, 'loss_avg_usage'):
+            self.loss_avg_usage = torch.tensor(0.0, device=self.device)
         
         # Combined loss
         self.loss_G = (self.loss_G_A + self.loss_G_B + 
@@ -213,7 +231,7 @@ class VQCycleGANModel(BaseModel):
                       self.loss_idt_A + self.loss_idt_B +
                       self.loss_rec_A + self.loss_rec_B +
                       self.loss_vq)
-        
+
         # TODO: if xxx: self.loss_G += 
         
         self.loss_G.backward()
@@ -235,14 +253,22 @@ class VQCycleGANModel(BaseModel):
         self.backward_D_A()
         self.backward_D_B()
         self.optimizer_D.step()
+        
+        # 更新码本使用率监控（不需要每个batch都更新，可以降低频率）
+        if hasattr(self, 'batch_count'):
+            self.batch_count += 1
+        else:
+            self.batch_count = 1
+            
+        if self.batch_count % 100 == 0:  # 每100个batch更新一次
+            self.evaluate_codebook()
     
     def get_current_visuals(self):
         """返回当前的可视化图像"""
         visual_ret = super().get_current_visuals()
         
         # 添加VQ码本使用情况的可视化（可选）
-        vq_generator = self.netG.module if hasattr(self.netG, 'module') else self.netG
-        if hasattr(vq_generator, 'indices') and vq_generator.indices is not None:
+        if hasattr(self.netG, 'indices') and self.netG.indices is not None:
             # 可以在这里添加码本使用情况的可视化
             pass
             
@@ -252,7 +278,52 @@ class VQCycleGANModel(BaseModel):
         """评估VQ码本的使用情况"""
         vq_generator = self.netG.module if hasattr(self.netG, 'module') else self.netG
         usage, usage_rate = vq_generator.get_codebook_usage()
+        
         if usage is not None:
-            print(f"Codebook usage rate: {usage_rate:.2%}")
-            print(f"Active codes: {(usage > 0).sum().item()}/{len(usage)}")
+            # 确保tensor在正确的设备上
+            if not isinstance(usage_rate, torch.Tensor):
+                usage_rate = torch.tensor(usage_rate, device=self.device)
+            else:
+                usage_rate = usage_rate.to(self.device)
+            
+            # 添加到loss中用于tensorboard/visdom记录
+            self.loss_codebook_usage = usage_rate.detach()
+            
+            # avg_usage需要处理空的情况
+            if (usage > 0).any():
+                self.loss_avg_usage = usage[usage > 0].float().mean().detach().to(self.device)
+            else:
+                self.loss_avg_usage = torch.tensor(0.0, device=self.device)
+            
         return usage, usage_rate
+    
+
+    
+    def handle_codebook_collapse(self, threshold=0.5):
+        """处理码本崩塌问题"""
+        vq_generator = self.netG.module if hasattr(self.netG, 'module') else self.netG
+        usage, usage_rate = vq_generator.get_codebook_usage()
+        
+        if usage_rate < threshold:
+            print(f"Warning: Codebook usage rate ({usage_rate:.2%}) below threshold ({threshold:.0%})")
+            
+            # 可选的恢复策略：
+            # 1. 重新初始化未使用的码本向量
+            if hasattr(vq_generator.vq_layer, 'embedding'):
+                unused_indices = (usage == 0).nonzero().squeeze()
+                if len(unused_indices) > 0:
+                    # 使用已使用向量的扰动版本重新初始化
+                    used_indices = (usage > 0).nonzero().squeeze()
+                    if len(used_indices) > 0:
+                        # 随机选择一些已使用的向量
+                        random_used = used_indices[torch.randint(0, len(used_indices), (len(unused_indices),))]
+                        # 添加噪声
+                        noise = torch.randn_like(vq_generator.vq_layer.embedding.weight[random_used]) * 0.1
+                        vq_generator.vq_layer.embedding.weight.data[unused_indices] = \
+                            vq_generator.vq_layer.embedding.weight.data[random_used] + noise
+                        print(f"Reinitialized {len(unused_indices)} unused codebook vectors")
+            
+            # 2. 调整beta值（可选）
+            # vq_generator.vq_layer.beta *= 0.9
+            
+        return usage_rate
