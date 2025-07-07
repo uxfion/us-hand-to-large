@@ -21,7 +21,7 @@ def load_cyclegan_model():
     if '--gpu_ids' not in sys.argv:
         sys.argv += ['--gpu_ids', '0']
     if '--model' not in sys.argv:
-        sys.argv += ['--model', 'test']
+        sys.argv += ['--model', 'vq_test']
     if '--no_dropout' not in sys.argv:
         sys.argv += ['--no_dropout']
     if '--preprocess' not in sys.argv:
@@ -33,6 +33,11 @@ def load_cyclegan_model():
         sys.argv += ['--input_nc', '1']
     if '--output_nc' not in sys.argv:
         sys.argv += ['--output_nc', '1']
+    # 添加VQ参数 - 必须与训练时的参数匹配
+    if '--embed_dim' not in sys.argv:
+        sys.argv += ['--embed_dim', '3']
+    if '--n_embed' not in sys.argv:
+        sys.argv += ['--n_embed', '1024']
 
     # 解析参数
     opt = TestOptions().parse()
@@ -88,13 +93,15 @@ def cyclegan_grayscale_infer(model, image_raw):
     Returns:
         PIL Image格式的输出灰度图像
     """
-    # 确保输入图像是灰度模式
+    # 保存原始尺寸
+    original_size = image_raw.size
+
+    # 转换为灰度图
     if image_raw.mode != 'L':
         image_raw = image_raw.convert('L')
     
     # 填充图像到4的倍数
-    padded_image, (orig_w, orig_h) = pad_to_next_power_2(image_raw, base=4)
-    
+    padded_image, (orig_w, orig_h) = pad_to_next_power_2(image_raw, base=4, max_size=256)
     # 打印尺寸信息用于调试
     print(f"Original size: {image_raw.size}, Padded size: {padded_image.size}")
     
@@ -163,10 +170,10 @@ def cyclegan_drop_others_grayscale_infer(model, image_raw):
     with torch.no_grad():
         try:
             # 尝试使用返回两个值的接口
-            fake_image, _ = model.netG(image)
+            fake_image, _ = model.netG(image, direction='AtoB')
         except ValueError:
             # 如果模型只返回一个值，直接使用
-            fake_image = model.netG(image)
+            fake_image = model.netG(image, direction='AtoB')
     
     # 转换回PIL图像
     fake_image = (fake_image.cpu().squeeze(0) + 1) / 2.0
@@ -186,13 +193,14 @@ if __name__ == '__main__':
     # input_folder = '/root/Lecter/cyclegan-exp/us-hand-to-large/datasets/split/test/test_only_LR'
     # input_folder = '/root/Lecter/dcm-convert/t1090000101al_gauss_subsample-dir-resizeto512nearest'
     # input_folder = '/root/Lecter/dcm-convert/sort/origin/t1090000101al-dir_shrink2'
-    # input_folder = "/root/exp/us-hand-to-large/datasets/xijing_split/test/test_semi_paired_LR"
-    input_folder = "/root/exp/us-hand-to-large/datasets/xijing_split/test/test_unpaired_LR"
+    input_folder = "/root/exp/us-hand-to-large/datasets/xijing_split/test/test_semi_paired_LR"
+    # input_folder = "/root/exp/us-hand-to-large/datasets/xijing_split/test/test_unpaired_LR"
     # input_folder = "/root/exp/us-hand-to-large/datasets/zhang/origin/t1090000101al-dir_shrink4"  # 输入文件夹路径
     files = [f for f in os.listdir(input_folder) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]  # 获取图片文件列表
     # output_folder = f'./results/results_semi_paired/1111'  # 输出文件夹路径
     # output_folder = f'./results/xijing_test_epoch195_LR_SR_x4_max256'
-    output_folder = f'./results/xijing_test_LR_SR_x4_max256_unpaired'
+    # output_folder = f'./results/xijing_test_LR_SR_x4_max256_unpaired'  # 非配对输出
+    output_folder = f'./results/xijing_test_dual_AtoB_LR_SR_x4_max256'  # 配对输出
     # output_folder = "./results/zhang/t1090000101al-dir_shrink4_sr"
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
