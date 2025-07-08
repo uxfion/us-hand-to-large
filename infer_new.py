@@ -48,6 +48,8 @@ class CycleGANInference:
             model_args.extend(['--preprocess', 'resize_and_crop'])
             model_args.extend(['--load_size', str(self.args.load_size)])
             model_args.extend(['--crop_size', str(self.args.crop_size)])
+        elif self.args.preprocess_mode == 'fixed_size':
+            model_args.extend(['--preprocess', 'none'])  # We'll handle resize manually
         else:
             model_args.extend(['--preprocess', 'none'])
         
@@ -106,24 +108,87 @@ class CycleGANInference:
         """Preprocess image for model input using standard CycleGAN transforms"""
         original_size = image.size
         
-        # Use the same transform that would be used in the dataset
-        grayscale = (self.args.input_nc == 1)
+        if self.args.preprocess_mode == 'fixed_size':
+            # Custom fixed size preprocessing
+            return self._fixed_size_preprocess(image, original_size)
+        else:
+            # Use standard framework preprocessing
+            # Use the same transform that would be used in the dataset
+            grayscale = (self.args.input_nc == 1)
+            
+            # For inference, we don't want random operations
+            params = {'crop_pos': (0, 0), 'flip': False} if hasattr(self, 'opt') and 'crop' in self.opt.preprocess else None
+            
+            # Use standard transform from base_dataset
+            transform = get_transform(self.opt, params=params, grayscale=grayscale, convert=True)
+            
+            # Apply transform
+            tensor = transform(image).unsqueeze(0).to(self.device)
+            
+            if self.args.verbose:
+                print(f"Original size: {original_size}, Processed tensor shape: {tensor.shape}")
+                
+            return tensor, original_size
+            
+    def _fixed_size_preprocess(self, image, original_size):
+        """Fixed size preprocessing with aspect ratio preservation"""
+        # Convert to appropriate mode first
+        if self.args.input_nc == 1 and image.mode != 'L':
+            image = image.convert('L')
+        elif self.args.input_nc == 3 and image.mode != 'RGB':
+            image = image.convert('RGB')
+            
+        # Resize to fixed size while maintaining aspect ratio
+        fixed_size = self.args.fixed_size
+        w, h = image.size
         
-        # For inference, we don't want random operations
-        params = {'crop_pos': (0, 0), 'flip': False} if hasattr(self, 'opt') and 'crop' in self.opt.preprocess else None
+        # Calculate scale to fit within fixed_size x fixed_size
+        scale = min(fixed_size / w, fixed_size / h)
+        new_w = int(w * scale)
+        new_h = int(h * scale)
         
-        # Use standard transform from base_dataset
-        transform = get_transform(self.opt, params=params, grayscale=grayscale, convert=True)
+        # Resize image
+        resized_image = image.resize((new_w, new_h), Image.Resampling.BICUBIC)
         
-        # Apply transform
-        tensor = transform(image).unsqueeze(0).to(self.device)
+        # Create fixed size canvas and center the image
+        if self.args.input_nc == 1:
+            canvas = Image.new('L', (fixed_size, fixed_size), color=0)
+        else:
+            canvas = Image.new('RGB', (fixed_size, fixed_size), color=(0, 0, 0))
+            
+        # Center paste
+        offset_x = (fixed_size - new_w) // 2
+        offset_y = (fixed_size - new_h) // 2
+        canvas.paste(resized_image, (offset_x, offset_y))
+        
+        # Apply transforms
+        if self.args.input_nc == 1:
+            transform = transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Normalize([0.5], [0.5])
+            ])
+        else:
+            transform = transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
+            ])
+            
+        tensor = transform(canvas).unsqueeze(0).to(self.device)
         
         if self.args.verbose:
-            print(f"Original size: {original_size}, Processed tensor shape: {tensor.shape}")
+            print(f"Fixed size preprocessing: {original_size} -> {canvas.size} -> tensor {tensor.shape}")
+            print(f"Scale: {scale:.3f}, Offset: ({offset_x}, {offset_y})")
             
-        return tensor, original_size
+        # Store preprocessing info for later restoration
+        preprocess_info = {
+            'scale': scale,
+            'offset': (offset_x, offset_y),
+            'resized_size': (new_w, new_h)
+        }
         
-    def _postprocess_output(self, output_tensor, original_size):
+        return tensor, (original_size, preprocess_info)
+        
+    def _postprocess_output(self, output_tensor, original_info):
         """Postprocess model output to PIL image"""
         # Move to CPU and remove batch dimension
         output = output_tensor.cpu().squeeze(0)
@@ -135,10 +200,14 @@ class CycleGANInference:
         # Convert to PIL
         output_image = transforms.ToPILImage()(output)
         
-        # For flexible mode with 'none' preprocessing, we need to crop to original size
-        # For standard mode, the image is already the right size
-        if self.args.preprocess_mode == 'flexible':
-            # Crop to original size (remove padding)
+        # Handle different preprocessing modes
+        if self.args.preprocess_mode == 'fixed_size':
+            # For fixed_size mode, restore to original size
+            original_size, preprocess_info = original_info
+            output_image = self._restore_from_fixed_size(output_image, original_size, preprocess_info)
+        elif self.args.preprocess_mode == 'flexible':
+            # For flexible mode with 'none' preprocessing, crop to original size if needed
+            original_size = original_info
             current_size = output_image.size
             if current_size != original_size:
                 output_image = output_image.crop((0, 0, min(original_size[0], current_size[0]), 
@@ -146,8 +215,31 @@ class CycleGANInference:
                 # If we need to resize back to exact original size
                 if output_image.size != original_size:
                     output_image = output_image.resize(original_size, Image.Resampling.BICUBIC)
+        else:
+            # For standard mode, the image should already be the right size
+            # But we may need to resize back to original size
+            original_size = original_info
+            if output_image.size != original_size:
+                output_image = output_image.resize(original_size, Image.Resampling.BICUBIC)
         
         return output_image
+        
+    def _restore_from_fixed_size(self, output_image, original_size, preprocess_info):
+        """Restore image from fixed size canvas to original size"""
+        scale = preprocess_info['scale']
+        offset_x, offset_y = preprocess_info['offset']
+        resized_w, resized_h = preprocess_info['resized_size']
+        
+        # Extract the valid region from the fixed size canvas
+        cropped = output_image.crop((offset_x, offset_y, offset_x + resized_w, offset_y + resized_h))
+        
+        # Resize back to original size
+        restored = cropped.resize(original_size, Image.Resampling.BICUBIC)
+        
+        if self.args.verbose:
+            print(f"Restored: {output_image.size} -> crop({offset_x},{offset_y},{offset_x + resized_w},{offset_y + resized_h}) -> resize to {original_size}")
+        
+        return restored
         
     def infer_single(self, image_path):
         """
@@ -163,7 +255,7 @@ class CycleGANInference:
         image = Image.open(image_path)
         
         # Preprocess
-        input_tensor, original_size = self._preprocess_image(image)
+        input_tensor, original_info = self._preprocess_image(image)
         
         # Inference
         with torch.no_grad():
@@ -186,7 +278,7 @@ class CycleGANInference:
                 output = visuals['fake']
                 
         # Postprocess
-        result_image = self._postprocess_output(output, original_size)
+        result_image = self._postprocess_output(output, original_info)
         
         return result_image
         
@@ -262,12 +354,15 @@ def main():
     
     # Preprocessing mode
     parser.add_argument('--preprocess_mode', type=str, default='flexible', 
-                       choices=['flexible', 'standard'], 
-                       help='flexible: use power-of-2 padding; standard: use resize_and_crop')
+                       choices=['flexible', 'standard', 'fixed_size'], 
+                       help='flexible: power-of-2 padding; standard: resize+crop; fixed_size: resize to fixed size then restore')
     
     # Standard CycleGAN size options (for standard mode)
     parser.add_argument('--load_size', type=int, default=286, help='Scale images to this size (used in standard mode)')
     parser.add_argument('--crop_size', type=int, default=256, help='Crop to this size (used in standard mode)')
+    
+    # Fixed size mode options (for fixed_size mode)
+    parser.add_argument('--fixed_size', type=int, default=512, help='Fixed size for inference (used in fixed_size mode)')
     
     # VQ model specific settings
     parser.add_argument('--embed_dim', type=int, default=3, help='VQ embedding dimension')
@@ -292,6 +387,8 @@ def main():
     if args.verbose:
         if args.preprocess_mode == 'standard':
             print(f"Using standard preprocessing: resize to {args.load_size}, crop to {args.crop_size}")
+        elif args.preprocess_mode == 'fixed_size':
+            print(f"Using fixed size preprocessing: resize to {args.fixed_size}x{args.fixed_size}, restore to original")
         else:
             print(f"Using flexible preprocessing: power-of-2 padding")
         
