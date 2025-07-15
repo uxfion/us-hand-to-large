@@ -64,7 +64,7 @@ class CycleGANInference:
         model_args.extend(['--output_nc', str(self.args.output_nc)])
         
         # Add VQ-specific parameters if using VQ models
-        if 'vq' in self.args.netG.lower():
+        if 'vq_dual' in self.args.netG.lower():
             model_args.extend(['--embed_dim', str(self.args.embed_dim)])
             model_args.extend(['--n_embed', str(self.args.n_embed)])
             
@@ -262,12 +262,9 @@ class CycleGANInference:
             if hasattr(self.model, 'netG'):
                 # For test model or similar
                 if 'vq_dual' in self.args.netG and hasattr(self.model.netG, 'forward'):
-                    try:
-                        # Try VQ dual model interface
-                        output, _ = self.model.netG(input_tensor, direction='AtoB')
-                    except (ValueError, TypeError):
-                        # Fallback to simple forward
-                        output = self.model.netG(input_tensor)
+                    output = self.model.netG(input_tensor, direction='AtoB')
+                elif 'vq_resnet' in self.args.netG and hasattr(self.model.netG, 'forward'):
+                    output, _ = self.model.netG(input_tensor)
                 else:
                     output = self.model.netG(input_tensor)
             else:

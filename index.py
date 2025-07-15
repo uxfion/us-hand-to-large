@@ -112,7 +112,7 @@ def save_results(all_results, output_dir='results/index'):
 
 def main():
     # 设置基础路径
-    base_path = "/root/Lecter/cyclegan-exp/us-hand-to-large"
+    base_path = "/root/exp/us-hand-to-large"
     
     # 定义需要评估的文件夹
     folders_to_evaluate = {
@@ -155,17 +155,26 @@ def main():
         # "test_LR": os.path.join(base_path, 'datasets/split/test/test_LR'),
         # "test_HR": os.path.join(base_path, 'datasets/split/test/test_HR'),
 
-        # 'input': os.path.join(base_path, 'datasets/split/test/test_semi_paired_LR'),
-        # 'gt': os.path.join(base_path, 'datasets/split/test/test_semi_paired_HR'),
+        'input': os.path.join(base_path, 'datasets/xijing_split/test/test_semi_paired_LR_crop'),
+        'gt': os.path.join(base_path, 'datasets/xijing_split/test/test_semi_paired_HR_crop'),
         # '3.vq_resnet_v1_unpaired': "/root/Lecter/cyclegan-exp/us-hand-to-large/results/results_semi_paired/test_3.vq_resnet_v1_unpaired_x4max256",
         # '5.vq_resnet_v1_un_paired': "/root/Lecter/cyclegan-exp/us-hand-to-large/results/results_semi_paired/test_5.vq_resnet_v1_un_paired_x4max256",
         # '6.vq_resnet_v1_semi_un_paired': "/root/Lecter/cyclegan-exp/us-hand-to-large/results/results_semi_paired/test_6.vq_resnet_v1_semi_un_paired_x4max256",
-        'trainA': os.path.join(base_path, 'datasets/all/trainA'),
-        'trainB': os.path.join(base_path, 'datasets/all/trainB'),
+        # 'trainA': os.path.join(base_path, 'datasets/all/trainA'),
+        # 'trainB': os.path.join(base_path, 'datasets/all/trainB'),
+        # '6.vq_resnet_v1_semi_un_paired_onlyLR': "/root/Lecter/cyclegan-exp/us-hand-to-large/results/results_semi_paired/test_6.vq_resnet_v1_semi_un_paired_onlyLR_x4max256",
+
+        
+        'real-esrgan': '/root/exp/Real-ESRGAN/results/test_cropdata_train0_SR',
+        'vanilla_cyclegan': '/root/exp/pytorch-CycleGAN-and-pix2pix/results/infer_new/xijing_test_vanilla_cyclegan_cropdata_flexNoResize',
+        'vqresnet': os.path.join(base_path, 'results/infer_new/xijing_test_vqresnet_AtoB_cropdata_flexNoResize'),
+        'vqdualv0': os.path.join(base_path, 'results/infer_new/xijing_test_vqdualv0_AtoB_cropdata_flexNoResize'),
+        'vqdualv1(ours)': os.path.join(base_path, 'results/infer_new/xijing_test_vqdualv1_AtoB_cropdata_flexNoResize'),
+
     }
     
     # FID参考文件夹（高清Ground Truth图像）
-    fid_ref_folder = os.path.join(base_path, 'datasets/all/trainB')
+    fid_ref_folder = os.path.join(base_path, 'datasets/xijing_split/trainB')
     
     # 初始化评估器
     evaluator = ImageQualityEvaluator()
