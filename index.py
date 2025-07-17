@@ -5,6 +5,7 @@ from glob import glob
 import pandas as pd
 from datetime import datetime
 import json
+import numpy as np
 
 class ImageQualityEvaluator:
     def __init__(self, device='cuda' if torch.cuda.is_available() else 'cpu'):
@@ -18,12 +19,13 @@ class ImageQualityEvaluator:
         
         # 1. 全参考指标 (Full Reference) - 需要参考图像
         self.fr_metrics = {
-            'LPIPS': pyiqa.create_metric('lpips', device=device),   # 感知损失，越低越好
+            'LPIPS': pyiqa.create_metric('lpips', device=device),   # 感知损失，越低越好！！！
             # 'DISTS': pyiqa.create_metric('dists', device=device),   # 深度图像结构和纹理相似性，越低越好
             ####
             'PSNR': pyiqa.create_metric('psnry', device=device),    # 灰度图PSNR，越高越好
             'SSIM': pyiqa.create_metric('ssim', device=device),     # 灰度图SSIM，越高越好
             'MS_SSIM': pyiqa.create_metric('ms_ssim', device=device), # 多尺度SSIM，越高越好
+            'CW_SSIM': pyiqa.create_metric('cw_ssim', device=device), # 复小波结构相似性，越高越好！！！
             'FSIM': pyiqa.create_metric('fsim', device=device),     # 特征相似性，越高越好
             'VIF': pyiqa.create_metric('vif', device=device),         # 视觉信息保真度，越高越好
             
@@ -33,11 +35,11 @@ class ImageQualityEvaluator:
         self.nr_metrics = {
             'NIQE': pyiqa.create_metric('niqe', device=device),     # 自然图像质量评估，越低越好
             'BRISQUE': pyiqa.create_metric('brisque', device=device), # 盲图像质量评估，越低越好
-            # 'PI': pyiqa.create_metric('pi', device=device),         # 感知指数，越低越好
+            'PI': pyiqa.create_metric('pi', device=device),         # 感知指数，越低越好
             ###
             'TOPIQ_NR': pyiqa.create_metric('topiq_nr', device=device), # TOPIQ无参考版本，越高越好
             'ARNIQA': pyiqa.create_metric('arniqa', device=device),  # ARNIQA，越高越好
-            # 'CLIPIQA': pyiqa.create_metric('clipiqa', device=device), # CLIPIQA，越高越好
+            'CLIPIQA': pyiqa.create_metric('clipiqa', device=device), # CLIPIQA，越高越好
             # 'MANIQA': pyiqa.create_metric('maniqa', device=device),  # MANIQA，越高越好
         }
         
@@ -127,14 +129,18 @@ class ImageQualityEvaluator:
                 print(f"Error processing {img_path}: {str(e)}")
                 continue
         
-        # 计算平均值
+        # 计算平均值和标准差
         avg_results = {}
+        std_results = {}
         for metric_name, scores in results.items():
             valid_scores = [s for s in scores if s is not None]
             if valid_scores:
-                avg_results[metric_name] = sum(valid_scores) / len(valid_scores)
+                avg_results[metric_name] = np.mean(valid_scores)
+                std_results[metric_name] = np.std(valid_scores, ddof=1) if len(valid_scores) > 1 else 0.0
+                print(f"Average {metric_name}: {avg_results[metric_name]:.4f} ± {std_results[metric_name]:.4f}")
             else:
                 avg_results[metric_name] = None
+                std_results[metric_name] = None
         
         # 3. 计算特殊指标
         if special_ref_folder:
@@ -144,13 +150,15 @@ class ImageQualityEvaluator:
                         print(f"Calculating FID between {folder_path} and {special_ref_folder}")
                         score = metric(folder_path, special_ref_folder).item()
                         avg_results[metric_name] = score
+                        std_results[metric_name] = None  # FID是单个值，没有标准差
                         print(f"FID score: {score:.4f}")
                     # 可以在这里添加其他特殊指标的计算逻辑
                 except Exception as e:
                     print(f"Error calculating {metric_name}: {str(e)}")
                     avg_results[metric_name] = None
+                    std_results[metric_name] = None
         
-        return avg_results, image_results
+        return avg_results, std_results, image_results
 
     def calculate_fid(self, test_folder, ref_folder):
         """
@@ -187,6 +195,7 @@ class ImageQualityEvaluator:
             'DISTS': 'Deep Image Structure and Texture Similarity - 越低越好',
             'FSIM': 'Feature Similarity Index Measure - 越高越好',
             'MS_SSIM': 'Multi-Scale Structural Similarity Index - 越高越好',
+            'CW_SSIM': '复小波结构相似 - 越高越好',
         }
         for metric_name in self.fr_metrics.keys():
             if metric_name in fr_info:
@@ -235,10 +244,21 @@ def save_results(all_results, output_dir='results/index'):
     output_dir = os.path.join(output_dir, timestamp)
     os.makedirs(output_dir, exist_ok=True)
 
-    
-    # 保存总结结果为CSV
+    # 保存总结结果为CSV（包含均值和标准差）
     summary_df = pd.DataFrame.from_dict(all_results['summary'], orient='index')
     summary_df.to_csv(os.path.join(output_dir, f'summary_{timestamp}.csv'))
+    
+    # 保存标准差结果为CSV
+    std_df = pd.DataFrame.from_dict(all_results['std'], orient='index')
+    std_df.to_csv(os.path.join(output_dir, f'std_{timestamp}.csv'))
+    
+    # 保存合并的结果（均值±标准差格式）
+    combined_df = pd.DataFrame(index=summary_df.index)
+    for col in summary_df.columns:
+        combined_df[col] = summary_df[col].combine(std_df[col], 
+            lambda mean, std: f"{mean:.4f} ± {std:.4f}" if pd.notna(mean) and pd.notna(std) and std > 0 
+            else f"{mean:.4f}" if pd.notna(mean) else "N/A")
+    combined_df.to_csv(os.path.join(output_dir, f'combined_{timestamp}.csv'))
     
     # 保存详细结果为JSON
     with open(os.path.join(output_dir, f'detailed_{timestamp}.json'), 'w') as f:
@@ -249,19 +269,29 @@ def save_results(all_results, output_dir='results/index'):
     with open(report_path, 'w') as f:
         f.write("Image Quality Assessment Report\n")
         f.write(f"Generated at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-        f.write("=" * 50 + "\n\n")
+        f.write("=" * 80 + "\n\n")
         
         # 写入所有指标的结果，包括无参考指标和FID
-        for folder, metrics in all_results['summary'].items():
+        for folder in all_results['summary'].keys():
             f.write(f"\nFolder: {folder}\n")
-            f.write("-" * 40 + "\n")
-            for metric, value in metrics.items():
-                if value is not None:
-                    f.write(f"{metric}: {value:.4f}\n")
+            f.write("-" * 60 + "\n")
+            for metric in all_results['summary'][folder].keys():
+                mean_val = all_results['summary'][folder][metric]
+                std_val = all_results['std'][folder][metric]
+                
+                if mean_val is not None:
+                    if std_val is not None and std_val > 0:
+                        f.write(f"{metric}: {mean_val:.4f} ± {std_val:.4f}\n")
+                    else:
+                        f.write(f"{metric}: {mean_val:.4f}\n")
+                else:
+                    f.write(f"{metric}: N/A\n")
             f.write("\n")
 
     print(f"\nResults saved to {output_dir}:")
-    print(f"- Summary CSV: summary_{timestamp}.csv")
+    print(f"- Summary CSV (means): summary_{timestamp}.csv")
+    print(f"- Standard deviation CSV: std_{timestamp}.csv")
+    print(f"- Combined CSV (mean ± std): combined_{timestamp}.csv")
     print(f"- Detailed JSON: detailed_{timestamp}.json")
     print(f"- Report: report_{timestamp}.txt")
     
@@ -349,6 +379,7 @@ def main():
     # 存储所有结果
     all_results = {
         'summary': {},
+        'std': {},
         'detailed': {}
     }
     
@@ -365,7 +396,7 @@ def main():
             current_fr_ref = fr_ref_folder
         
         # 评估当前文件夹
-        avg_results, detailed_results = evaluator.evaluate_folder(
+        avg_results, std_results, detailed_results = evaluator.evaluate_folder(
             folder_path=folder_path,
             folder_name=folder_name,
             fr_ref_folder=current_fr_ref,
@@ -374,6 +405,7 @@ def main():
         
         # 保存结果
         all_results['summary'][folder_name] = avg_results
+        all_results['std'][folder_name] = std_results
         all_results['detailed'][folder_name] = detailed_results
     
     # 保存结果
@@ -381,11 +413,27 @@ def main():
     
     # 打印总结表格
     print("\nSummary of Results:")
-    print("=" * 50)
+    print("=" * 80)
     
-    # 创建一个整洁的表格显示
+    # 创建一个整洁的表格显示（均值±标准差）
     summary_df = pd.DataFrame.from_dict(all_results['summary'], orient='index')
-    print("\n", summary_df.round(4), "\n")
+    std_df = pd.DataFrame.from_dict(all_results['std'], orient='index')
+    
+    # 创建合并显示的DataFrame
+    combined_display = pd.DataFrame(index=summary_df.index)
+    for col in summary_df.columns:
+        combined_display[col] = summary_df[col].combine(std_df[col], 
+            lambda mean, std: f"{mean:.4f}±{std:.4f}" if pd.notna(mean) and pd.notna(std) and std > 0 
+            else f"{mean:.4f}" if pd.notna(mean) else "N/A")
+    
+    print("\nResults (Mean ± Std):")
+    print(combined_display)
+    
+    print("\nMeans only:")
+    print(summary_df.round(4))
+    
+    print("\nStandard deviations:")
+    print(std_df.round(4))
 
 if __name__ == "__main__":
     main()
