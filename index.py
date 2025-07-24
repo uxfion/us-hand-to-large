@@ -19,15 +19,15 @@ class ImageQualityEvaluator:
         
         # 1. 全参考指标 (Full Reference) - 需要参考图像
         self.fr_metrics = {
-            'LPIPS': pyiqa.create_metric('lpips', device=device),   # 感知损失，越低越好！！！
+            # 'LPIPS': pyiqa.create_metric('lpips', device=device),   # 感知损失，越低越好！！！
             # 'DISTS': pyiqa.create_metric('dists', device=device),   # 深度图像结构和纹理相似性，越低越好
             ####
-            'PSNR': pyiqa.create_metric('psnry', device=device),    # 灰度图PSNR，越高越好
-            'SSIM': pyiqa.create_metric('ssim', device=device),     # 灰度图SSIM，越高越好
-            'MS_SSIM': pyiqa.create_metric('ms_ssim', device=device), # 多尺度SSIM，越高越好
-            'CW_SSIM': pyiqa.create_metric('cw_ssim', device=device), # 复小波结构相似性，越高越好！！！
-            'FSIM': pyiqa.create_metric('fsim', device=device),     # 特征相似性，越高越好
-            'VIF': pyiqa.create_metric('vif', device=device),         # 视觉信息保真度，越高越好
+            # 'PSNR': pyiqa.create_metric('psnry', device=device),    # 灰度图PSNR，越高越好
+            # 'SSIM': pyiqa.create_metric('ssim', device=device),     # 灰度图SSIM，越高越好
+            # 'MS_SSIM': pyiqa.create_metric('ms_ssim', device=device), # 多尺度SSIM，越高越好
+            # 'CW_SSIM': pyiqa.create_metric('cw_ssim', device=device), # 复小波结构相似性，越高越好！！！
+            # 'FSIM': pyiqa.create_metric('fsim', device=device),     # 特征相似性，越高越好
+            # 'VIF': pyiqa.create_metric('vif', device=device),         # 视觉信息保真度，越高越好
             
         }
         
@@ -308,66 +308,34 @@ def main():
     base_path = "/root/exp/us-hand-to-large"
     
     # 定义需要评估的文件夹
-    folders_to_evaluate = {
-        # 'original': os.path.join(base_path, 'datasets/all/test'),
-        # 'resnet_9block': os.path.join(base_path, 'results/test_1.resnet_9block_x4_3090'),
-        # # 'unet256_resize': os.path.join(base_path, 'results/test_2.raw_unet256_resize_256_3090'),
-        # 'unet_256': os.path.join(base_path, 'results/test_2.unet_256_x256_3090'),
-        # # 'hybrid_restormer': os.path.join(base_path, 'results/test_xxx.hybrid_restormer_1'),
-        # 'vq_resnet_max256': os.path.join(base_path, 'results/test_3.vq_resnet_x4_max256_3090'),
-        # 'vq_resnet_max512': os.path.join(base_path, 'results/test_3.vq_resnet_x4_max512_3090'),
-        # 'vq_resnet_max1024': os.path.join(base_path, 'results/test_3.vq_resnet_x4_max1024_act1000_3090'),
-        # 'vq_resnet_patch256_overlap32': os.path.join(base_path, 'results/test_patch256_overlap32'),
-        # 'vq_resnet_patch256_overlap64': os.path.join(base_path, 'results/test_patch256_overlap64'),
-        # 'vq_resnet_patch256_overlap128': os.path.join(base_path, 'results/test_patch256_overlap128'),
-        # 'vq_resnet_patch512_overlap64': os.path.join(base_path, 'results/test_patch512_overlap64'),
-        # 'vq_resnet_patch512_overlap128': os.path.join(base_path, 'results/test_patch512_overlap128'),
-        # 'vq_resnet_patch512_overlap256': os.path.join(base_path, 'results/test_patch512_overlap256'),
-        # 'original': os.path.join(base_path, 'datasets/all/test'),
-
-        # 'resnet_9block': os.path.join(base_path, 'results/test_1.resnet_9block_a401_x4'),
-        # # 'unet256_resize': os.path.join(base_path, 'results/test_2.raw_unet256_resize_256_3090'),
-        # 'unet_256': os.path.join(base_path, 'results/test_2.unet_256_3090_x256'),
-        # # 'hybrid_restormer': os.path.join(base_path, 'results/test_xxx.hybrid_restormer_1'),
-        # 'vq_resnet_3090_max256': os.path.join(base_path, 'results/test_3.vq_resnet_3090_x4_max256'),
-        # 'vq_resnet_3090_max512': os.path.join(base_path, 'results/test_3.vq_resnet_3090_x4_max512'),
-        # 'vq_resnet_3090_max1024': os.path.join(base_path, 'results/test_3.vq_resnet_3090_x4_max1024'),
-        # 'vq_resnet_patch256_overlap32': os.path.join(base_path, 'results/test_patch256_overlap32'),
-        # 'vq_resnet_patch256_overlap64': os.path.join(base_path, 'results/test_patch256_overlap64'),
-        # 'vq_resnet_patch256_overlap128': os.path.join(base_path, 'results/test_patch256_overlap128'),
-        # 'vq_resnet_patch512_overlap64': os.path.join(base_path, 'results/test_patch512_overlap64'),
-        # 'vq_resnet_patch512_overlap128': os.path.join(base_path, 'results/test_patch512_overlap128'),
-        # 'vq_resnet_patch512_overlap256': os.path.join(base_path, 'results/test_patch512_overlap256'),
-        # 'vq_resnet_a6000_epoch185_max256': os.path.join(base_path, 'results/test_3.vq_resnet_a6000_epoch185_x4_max256'),
-        # 'vq_resnet_a6000_epoch185_max512': os.path.join(base_path, 'results/test_3.vq_resnet_a6000_epoch185_x4_max512'),
-        # 'vq_resnet_a6000_epoch185_max1024': os.path.join(base_path, 'results/test_3.vq_resnet_a6000_epoch185_x4_max1024'),
-        # 'vq_resnet_concat_paired_max256': os.path.join(base_path, 'results/test_grayscale_x4_max256'),
-        # 'vq_resnet_concat_paired_max512': os.path.join(base_path, 'results/test_grayscale_x4_max512'),
-        # 'vq_resnet_concat_paired_max1024': os.path.join(base_path, 'results/test_grayscale_x4_max1024'),
-        # 'vq_hybrid_restormer': os.path.join(base_path, 'results/test_xxx.hybrid_restormer_1'),
-        # "test_LR": os.path.join(base_path, 'datasets/split/test/test_LR'),
-        # "test_HR": os.path.join(base_path, 'datasets/split/test/test_HR'),
-
+    # 半配对数据
+    semi_paired_folders = {
         'input': os.path.join(base_path, 'datasets/xijing_split/test/test_semi_paired_LR_crop_gray'),
         'gt': os.path.join(base_path, 'datasets/xijing_split/test/test_semi_paired_HR_crop_gray'),
-        # '3.vq_resnet_v1_unpaired': "/root/Lecter/cyclegan-exp/us-hand-to-large/results/results_semi_paired/test_3.vq_resnet_v1_unpaired_x4max256",
-        # '5.vq_resnet_v1_un_paired': "/root/Lecter/cyclegan-exp/us-hand-to-large/results/results_semi_paired/test_5.vq_resnet_v1_un_paired_x4max256",
-        # '6.vq_resnet_v1_semi_un_paired': "/root/Lecter/cyclegan-exp/us-hand-to-large/results/results_semi_paired/test_6.vq_resnet_v1_semi_un_paired_x4max256",
-        # 'trainA': os.path.join(base_path, 'datasets/all/trainA'),
-        # 'trainB': os.path.join(base_path, 'datasets/all/trainB'),
-        # '6.vq_resnet_v1_semi_un_paired_onlyLR': "/root/Lecter/cyclegan-exp/us-hand-to-large/results/results_semi_paired/test_6.vq_resnet_v1_semi_un_paired_onlyLR_x4max256",
 
-        
         'real-esrgan': '/root/exp/Real-ESRGAN/results/test_cropdata_train0_SR_gray',
         'vanilla_cyclegan': '/root/exp/pytorch-CycleGAN-and-pix2pix/results/infer_new/xijing_test_vanilla_cyclegan_cropdata_flexNoResize',
         'vqresnet': os.path.join(base_path, 'results/infer_new/xijing_test_vqresnet_AtoB_cropdata_flexNoResize'),
         'vqdualv0': os.path.join(base_path, 'results/infer_new/xijing_test_vqdualv0_AtoB_cropdata_flexNoResize'),
         'vqdualv1(ours)': os.path.join(base_path, 'results/infer_new/xijing_test_vqdualv1_AtoB_cropdata_flexNoResize'),
-
     }
-    
+
+    unpaired_folders = {
+        'input': os.path.join(base_path, 'datasets/xijing_split/trainA_crop_gray'),
+        'gt': os.path.join(base_path, 'datasets/xijing_split/trainB_crop_gray'),
+
+        'real-esrgan': '/root/exp/Real-ESRGAN/results/xijing_trainACropGray_RealESRGAN',
+        'vanilla_cyclegan': '/root/exp/pytorch-CycleGAN-and-pix2pix/results/infer_new/xijing_trainACropGray_vanillaCyclegan_flexNoResize',
+        'vqresnet': os.path.join(base_path, 'results/infer_new/xijing_trainACropGray_vqresnet_flexNoResize'),
+        'vqdualv0': os.path.join(base_path, 'results/infer_new/xijing_trainACropGray_vqdualv0_AtoB_flexNoResize'),
+        'vqdualv1(ours)': os.path.join(base_path, 'results/infer_new/xijing_trainACropGray_vqdualv1_AtoB_flexNoResize'),
+    }
+
+    folders_to_evaluate = unpaired_folders
+
     # FID参考文件夹（高清Ground Truth图像）
-    fid_ref_folder = os.path.join(base_path, 'datasets/xijing_split/trainB_gray')
+    # fid_ref_folder = os.path.join(base_path, 'datasets/xijing_split/trainB_gray')
+    fid_ref_folder = os.path.join(base_path, 'datasets/xijing_split/trainB_crop_gray')
     
     # 全参考指标的参考文件夹（Ground Truth图像）
     fr_ref_folder = os.path.join(base_path, 'datasets/xijing_split/test/test_semi_paired_HR_crop_gray')
