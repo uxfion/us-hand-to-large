@@ -49,6 +49,10 @@ class VQCycleGANModel(BaseModel):
             parser.add_argument('--lambda_vq', type=float, default=1.0,
                               help='weight for VQ loss')
             
+            # 配对损失权重
+            parser.add_argument('--lambda_paired', type=float, default=20.0,
+                              help='weight for paired loss (semi_paired and aligned modes)')
+            
         return parser
 
     def __init__(self, opt):
@@ -59,7 +63,8 @@ class VQCycleGANModel(BaseModel):
         self.loss_names = ['D_A', 'G_A', 'cycle_A', 
                           'D_B', 'G_B', 'cycle_B',
                           'rec_A', 'rec_B', 'vq', 'vq_pp',
-                          'codebook_usage', 'avg_usage']  # 简化码本监控
+                          'codebook_usage', 'avg_usage',  # 简化码本监控
+                          'paired']  # 添加配对损失
         
         # 只有在使用identity loss时才添加
         if self.isTrain and self.opt.lambda_identity > 0.0:
@@ -119,6 +124,7 @@ class VQCycleGANModel(BaseModel):
             self.criterionCycle = torch.nn.L1Loss()
             self.criterionIdt = torch.nn.L1Loss()
             self.criterionRec = torch.nn.L1Loss()  # 重建损失
+            self.criterionPaired = torch.nn.L1Loss()  # 配对损失
             
             # 优化器
             self.optimizer_G = torch.optim.Adam(
@@ -138,6 +144,25 @@ class VQCycleGANModel(BaseModel):
         self.real_A = input['A' if AtoB else 'B'].to(self.device)
         self.real_B = input['B' if AtoB else 'A'].to(self.device)
         self.image_paths = input['A_paths' if AtoB else 'B_paths']
+        self.mode = input['mode']  # 获取模式（unaligned, aligned, semi_paired）
+        
+        # 处理batch中的模式信息
+        if isinstance(self.mode, (list, tuple)):
+            # 如果mode是列表（batch中每个样本的模式）
+            self.batch_modes = self.mode
+            # 创建配对数据掩码
+            self.paired_mask = torch.tensor([
+                mode in ['semi_paired', 'aligned'] for mode in self.batch_modes
+            ], dtype=torch.bool, device=self.device)
+        else:
+            # 如果mode是单个字符串（整个batch同一模式）
+            self.batch_modes = [self.mode] * self.real_A.size(0)
+            self.paired_mask = torch.tensor([
+                self.mode in ['semi_paired', 'aligned']
+            ] * self.real_A.size(0), dtype=torch.bool, device=self.device)
+        
+        # 计算配对数据的数量
+        self.num_paired = self.paired_mask.sum().item()
 
     def forward(self):
         """前向传播，计算所有需要的输出"""
@@ -182,6 +207,7 @@ class VQCycleGANModel(BaseModel):
         lambda_rec_A = self.opt.lambda_rec_A
         lambda_rec_B = self.opt.lambda_rec_B
         lambda_vq = self.opt.lambda_vq
+        lambda_paired = self.opt.lambda_paired
         
         # Identity loss
         if lambda_idt > 0:
@@ -207,6 +233,20 @@ class VQCycleGANModel(BaseModel):
         # Reconstruction loss (域内重建)
         self.loss_rec_A = self.criterionRec(self.recon_A, self.real_A) * lambda_rec_A
         self.loss_rec_B = self.criterionRec(self.recon_B, self.real_B) * lambda_rec_B
+
+        # Paired loss (配对数据损失：fake_B应该与real_B匹配)
+        if self.num_paired > 0:
+            # 只对配对数据计算损失
+            paired_fake_B = self.fake_B[self.paired_mask]
+            paired_real_B = self.real_B[self.paired_mask]
+            self.loss_paired = self.criterionPaired(paired_fake_B, paired_real_B) * lambda_paired
+            
+            # 调试信息（可以在训练稳定后删除）
+            if hasattr(self, 'batch_count') and self.batch_count % 100 == 0:
+                print(f"Batch {self.batch_count}: {self.num_paired}/{len(self.batch_modes)} paired samples, "
+                      f"loss_paired: {self.loss_paired.item():.4f}")
+        else:
+            self.loss_paired = torch.tensor(0.0, device=self.device)
         
         # VQ loss
         # 处理DataParallel的情况
@@ -230,7 +270,7 @@ class VQCycleGANModel(BaseModel):
                       self.loss_cycle_A + self.loss_cycle_B + 
                       self.loss_idt_A + self.loss_idt_B +
                       self.loss_rec_A + self.loss_rec_B +
-                      self.loss_vq)
+                      self.loss_vq + self.loss_paired)
 
         # TODO: if xxx: self.loss_G += 
         
@@ -273,6 +313,21 @@ class VQCycleGANModel(BaseModel):
             pass
             
         return visual_ret
+    
+    def get_current_losses(self):
+        """返回当前的损失字典，添加配对损失的统计信息"""
+        losses_dict = super().get_current_losses()
+        
+        # 添加配对损失的额外统计信息
+        if hasattr(self, 'num_paired') and hasattr(self, 'batch_modes'):
+            losses_dict['paired_samples'] = float(self.num_paired)
+            losses_dict['total_samples'] = float(len(self.batch_modes))
+            if self.num_paired > 0:
+                losses_dict['paired_ratio'] = float(self.num_paired) / float(len(self.batch_modes))
+            else:
+                losses_dict['paired_ratio'] = 0.0
+        
+        return losses_dict
     
     def evaluate_codebook(self):
         """评估VQ码本的使用情况"""

@@ -139,7 +139,7 @@ class MixedDataset(BaseDataset):
             A_img = self.degrade_image(B_img)
             A_path = f"degraded_{B_path}"
             
-        else:  # mode == 'semi_paired'
+        elif mode == 'semi_paired':
             # 半对齐模式：从半对齐目录加载配对图像
             pair_idx = index_info[1]
             A_path = self.semi_LR_paths[pair_idx]

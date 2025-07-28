@@ -72,11 +72,23 @@ class CustomDatasetDataLoader():
         dataset_class = find_dataset_using_name(opt.dataset_mode)
         self.dataset = dataset_class(opt)
         print("dataset [%s] was created" % type(self.dataset).__name__)
+        
+        # 检查是否是混合数据集，如果是则使用自定义collate函数
+        collate_fn = None
+        if opt.dataset_mode == 'mixed':
+            try:
+                from data.collate_fn import mixed_dataset_collate_fn
+                collate_fn = mixed_dataset_collate_fn
+                print("Using custom collate function for mixed dataset")
+            except ImportError:
+                print("Warning: Could not import mixed_dataset_collate_fn, using default collate")
+        
         self.dataloader = torch.utils.data.DataLoader(
             self.dataset,
             batch_size=opt.batch_size,
             shuffle=not opt.serial_batches,
-            num_workers=int(opt.num_threads))
+            num_workers=int(opt.num_threads),
+            collate_fn=collate_fn)
 
     def load_data(self):
         return self
