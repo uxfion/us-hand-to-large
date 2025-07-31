@@ -50,7 +50,7 @@ class VQCycleGANModel(BaseModel):
                               help='weight for VQ loss')
             
             # 配对损失权重
-            parser.add_argument('--lambda_paired', type=float, default=20.0,
+            parser.add_argument('--lambda_paired', type=float, default=10.0,
                               help='weight for paired loss (semi_paired and aligned modes)')
             
         return parser
@@ -239,13 +239,17 @@ class VQCycleGANModel(BaseModel):
             # 只对配对数据计算损失
             paired_fake_B = self.fake_B[self.paired_mask]
             paired_real_B = self.real_B[self.paired_mask]
-            self.loss_paired = self.criterionPaired(paired_fake_B, paired_real_B) * lambda_paired
             
-            # 调试信息（可以在训练稳定后删除）
-            if hasattr(self, 'batch_count') and self.batch_count % 100 == 0:
-                print(f"Batch {self.batch_count}: {self.num_paired}/{len(self.batch_modes)} paired samples, "
-                      f"loss_paired: {self.loss_paired.item():.4f}")
+            # 计算配对数据比例并应用线性缩放
+            self.paired_ratio = self.num_paired / len(self.batch_modes) if len(self.batch_modes) > 0 else 0.0
+            self.loss_paired = self.criterionPaired(paired_fake_B, paired_real_B) * lambda_paired * self.paired_ratio
+            
+            # # 调试信息（可以在训练稳定后删除）
+            # if hasattr(self, 'batch_count') and self.batch_count % 100 == 0:
+            #     print(f"Batch {self.batch_count}: {self.num_paired}/{len(self.batch_modes)} paired samples, "
+            #           f"paired_ratio: {self.paired_ratio:.3f}, loss_paired: {self.loss_paired.item():.4f}")
         else:
+            self.paired_ratio = 0.0
             self.loss_paired = torch.tensor(0.0, device=self.device)
         
         # VQ loss
@@ -319,13 +323,8 @@ class VQCycleGANModel(BaseModel):
         losses_dict = super().get_current_losses()
         
         # 添加配对损失的额外统计信息
-        if hasattr(self, 'num_paired') and hasattr(self, 'batch_modes'):
-            losses_dict['paired_samples'] = float(self.num_paired)
-            losses_dict['total_samples'] = float(len(self.batch_modes))
-            if self.num_paired > 0:
-                losses_dict['paired_ratio'] = float(self.num_paired) / float(len(self.batch_modes))
-            else:
-                losses_dict['paired_ratio'] = 0.0
+        if hasattr(self, 'paired_ratio'):
+            losses_dict['paired_ratio'] = float(self.paired_ratio)
         
         return losses_dict
     
