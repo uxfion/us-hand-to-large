@@ -1,11 +1,11 @@
 import os
 import torch
-import pyiqa
 from glob import glob
 import pandas as pd
 from datetime import datetime
 import json
 import numpy as np
+from my_iqa import calculate_nr_metric, calculate_fr_metric, calculate_fid
 
 class ImageQualityEvaluator:
     def __init__(self, device='cuda' if torch.cuda.is_available() else 'cpu'):
@@ -17,38 +17,10 @@ class ImageQualityEvaluator:
         """
         self.device = device
         
-        # 1. 全参考指标 (Full Reference) - 需要参考图像
-        self.fr_metrics = {
-            # 'LPIPS': pyiqa.create_metric('lpips', device=device),   # 感知损失，越低越好！！！
-            # 'DISTS': pyiqa.create_metric('dists', device=device),   # 深度图像结构和纹理相似性，越低越好
-            ####
-            # 'PSNR': pyiqa.create_metric('psnry', device=device),    # 灰度图PSNR，越高越好
-            # 'SSIM': pyiqa.create_metric('ssim', device=device),     # 灰度图SSIM，越高越好
-            # 'MS_SSIM': pyiqa.create_metric('ms_ssim', device=device), # 多尺度SSIM，越高越好
-            # 'CW_SSIM': pyiqa.create_metric('cw_ssim', device=device), # 复小波结构相似性，越高越好！！！
-            # 'FSIM': pyiqa.create_metric('fsim', device=device),     # 特征相似性，越高越好
-            # 'VIF': pyiqa.create_metric('vif', device=device),         # 视觉信息保真度，越高越好
-            
-        }
-        
-        # 2. 无参考指标 (No Reference) - 不需要参考图像
-        self.nr_metrics = {
-            'NIQE': pyiqa.create_metric('niqe', device=device),     # 自然图像质量评估，越低越好
-            'BRISQUE': pyiqa.create_metric('brisque', device=device), # 盲图像质量评估，越低越好
-            'PI': pyiqa.create_metric('pi', device=device),         # 感知指数，越低越好
-            ###
-            'TOPIQ_NR': pyiqa.create_metric('topiq_nr', device=device), # TOPIQ无参考版本，越高越好
-            'ARNIQA': pyiqa.create_metric('arniqa', device=device),  # ARNIQA，越高越好
-            'CLIPIQA': pyiqa.create_metric('clipiqa', device=device), # CLIPIQA，越高越好
-            # 'MANIQA': pyiqa.create_metric('maniqa', device=device),  # MANIQA，越高越好
-        }
-        
-        # 3. 特殊指标 - 需要特殊输入方式
-        self.special_metrics = {
-            'FID': pyiqa.create_metric('fid', device=device),       # 需要两个文件夹作为输入，越低越好
-            # 'IS': pyiqa.create_metric('is', device=device),        # Inception Score，越高越好
-            # 'KID': pyiqa.create_metric('kid', device=device),      # Kernel Inception Distance，越低越好
-        }
+        # 定义要计算的指标
+        self.nr_metrics = ['niqe', 'brisque','topiq_nr', 'arniqa', 'clipiqa', 'pi']  # , , 
+        self.fr_metrics = ['lpips', 'ssim', 'psnr']  # 如需要可以添加: []
+        self.calculate_fid = False
 
     def evaluate_folder(self, folder_path, folder_name, fr_ref_folder=None, special_ref_folder=None):
         """
@@ -63,102 +35,78 @@ class ImageQualityEvaluator:
         print(f"\nProcessing folder: {folder_name}")
         print("-" * 50)
         
-        # 获取所有图像文件
-        img_paths = glob(os.path.join(folder_path, '*.*'))
-        if not img_paths:
-            print(f"Warning: No images found in {folder_path}")
-            return {}, []
-        
-        # 初始化结果存储
-        results = {}
-        
-        # 添加无参考指标
-        for metric_name in self.nr_metrics.keys():
-            results[metric_name] = []
-        
-        # 如果提供了参考文件夹，添加全参考指标
-        if fr_ref_folder:
-            for metric_name in self.fr_metrics.keys():
-                results[metric_name] = []
-        
-        image_results = []
-        
-        # 评估每张图像
-        for img_path in img_paths:
-            img_name = os.path.basename(img_path)
-            try:
-                scores = {}
-                
-                # 1. 计算无参考指标
-                for metric_name, metric in self.nr_metrics.items():
-                    score = metric(img_path).item()
-                    scores[metric_name] = score
-                    results[metric_name].append(score)
-                
-                # 2. 计算全参考指标
-                if fr_ref_folder:
-                    # 根据命名规律找到对应的参考图像
-                    if '_LR_' in img_name:
-                        ref_img_name = img_name.replace('_LR_', '_HR_')
-                    else:
-                        ref_img_name = img_name
-                    
-                    ref_img_path = os.path.join(fr_ref_folder, ref_img_name)
-                    if os.path.exists(ref_img_path):
-                        for metric_name, metric in self.fr_metrics.items():
-                            score = metric(img_path, ref_img_path).item()
-                            scores[metric_name] = score
-                            results[metric_name].append(score)
-                    else:
-                        print(f"Warning: Reference image not found for {img_name} -> {ref_img_name}")
-                        for metric_name in self.fr_metrics.keys():
-                            scores[metric_name] = None
-                            results[metric_name].append(None)
-                
-                scores['image_name'] = img_name
-                image_results.append(scores)
-                
-                # 打印当前图像的结果
-                print(f"Processed {img_name}:")
-                for metric_name, score in scores.items():
-                    if metric_name != 'image_name' and score is not None:
-                        print(f"  {metric_name}: {score:.4f}")
-                print("-" * 30)
-                
-            except Exception as e:
-                print(f"Error processing {img_path}: {str(e)}")
-                continue
-        
-        # 计算平均值和标准差
-        avg_results = {}
+        mean_results = {}
         std_results = {}
-        for metric_name, scores in results.items():
-            valid_scores = [s for s in scores if s is not None]
-            if valid_scores:
-                avg_results[metric_name] = np.mean(valid_scores)
-                std_results[metric_name] = np.std(valid_scores, ddof=1) if len(valid_scores) > 1 else 0.0
-                print(f"Average {metric_name}: {avg_results[metric_name]:.4f} ± {std_results[metric_name]:.4f}")
-            else:
-                avg_results[metric_name] = None
-                std_results[metric_name] = None
+        metric_directions = {}  # 记录指标方向
         
-        # 3. 计算特殊指标
-        if special_ref_folder:
-            for metric_name, metric in self.special_metrics.items():
+        # 1. 计算无参考指标
+        for metric_name in self.nr_metrics:
+            try:
+                print(f"Computing {metric_name.upper()}...")
+                result = calculate_nr_metric(
+                    metric_name=metric_name,
+                    img_paths=folder_path,
+                    batch_size=128,
+                    device=self.device,
+                    return_details=True
+                )
+                mean_results[metric_name.upper()] = result['mean_score']
+                std_results[metric_name.upper()] = result['std_score']
+                metric_directions[metric_name.upper()] = result.get('lower_better', None)
+                print(f"  {metric_name.upper()}: {result['mean_score']:.4f} ± {result['std_score']:.4f}")
+            except Exception as e:
+                print(f"  Error calculating {metric_name}: {str(e)}")
+                mean_results[metric_name.upper()] = None
+                std_results[metric_name.upper()] = None
+                metric_directions[metric_name.upper()] = None
+        
+        # 2. 计算全参考指标
+        if fr_ref_folder and self.fr_metrics:
+            for metric_name in self.fr_metrics:
                 try:
-                    if metric_name == 'FID':
-                        print(f"Calculating FID between {folder_path} and {special_ref_folder}")
-                        score = metric(folder_path, special_ref_folder).item()
-                        avg_results[metric_name] = score
-                        std_results[metric_name] = None  # FID是单个值，没有标准差
-                        print(f"FID score: {score:.4f}")
-                    # 可以在这里添加其他特殊指标的计算逻辑
+                    print(f"Computing {metric_name.upper()}...")
+                    result = calculate_fr_metric(
+                        metric_name=metric_name,
+                        dist_paths=folder_path,
+                        ref_paths=fr_ref_folder,
+                        batch_size=32,
+                        device=self.device,
+                        return_details=True
+                    )
+                    mean_results[metric_name.upper()] = result['mean_score']
+                    std_results[metric_name.upper()] = result['std_score']
+                    metric_directions[metric_name.upper()] = result.get('lower_better', None)
+                    print(f"  {metric_name.upper()}: {result['mean_score']:.4f} ± {result['std_score']:.4f}")
                 except Exception as e:
-                    print(f"Error calculating {metric_name}: {str(e)}")
-                    avg_results[metric_name] = None
-                    std_results[metric_name] = None
+                    print(f"  Error calculating {metric_name}: {str(e)}")
+                    mean_results[metric_name.upper()] = None
+                    std_results[metric_name.upper()] = None
+                    metric_directions[metric_name.upper()] = None
         
-        return avg_results, std_results, image_results
+        # 3. 计算FID
+        if special_ref_folder and self.calculate_fid:
+            try:
+                print(f"Computing FID between {folder_path} and {special_ref_folder}")
+                fid_result = calculate_fid(
+                    dist_dir=folder_path,
+                    ref_dir=special_ref_folder,
+                    device=self.device
+                )
+                # FID总是返回单个值，需要用特殊方式获取方向信息
+                from my_iqa import IQACalculator
+                fid_calculator = IQACalculator('fid', device=self.device)
+                
+                mean_results['FID'] = fid_result
+                std_results['FID'] = None  # FID没有标准差
+                metric_directions['FID'] = fid_calculator.lower_better
+                print(f"  FID: {fid_result:.4f}")
+            except Exception as e:
+                print(f"  Error calculating FID: {str(e)}")
+                mean_results['FID'] = None
+                std_results['FID'] = None
+                metric_directions['FID'] = None
+        
+        return mean_results, std_results, metric_directions
 
     def calculate_fid(self, test_folder, ref_folder):
         """
@@ -173,9 +121,9 @@ class ImageQualityEvaluator:
             print(f"Calculating FID between:")
             print(f"Test folder: {test_folder}")
             print(f"Reference folder: {ref_folder}")
-            fid_score = self.special_metrics['FID'](test_folder, ref_folder)
-            print(f"FID score: {fid_score.item():.4f}")
-            return fid_score.item()
+            fid_score = calculate_fid(test_folder, ref_folder, device=self.device)
+            print(f"FID score: {fid_score:.4f}")
+            return fid_score
         except Exception as e:
             print(f"Error calculating FID: {str(e)}")
             return None
@@ -186,83 +134,81 @@ class ImageQualityEvaluator:
         print("IMAGE QUALITY METRICS INFORMATION")
         print("=" * 80)
         
-        print("\n1. FULL REFERENCE METRICS (需要参考图像)")
+        print("\n1. NO REFERENCE METRICS (无参考指标)")
         print("-" * 50)
-        fr_info = {
-            'PSNR': 'Peak Signal-to-Noise Ratio (峰值信噪比) - 越高越好',
-            'SSIM': 'Structural Similarity Index (结构相似性指数) - 越高越好',
-            'LPIPS': 'Learned Perceptual Image Patch Similarity (感知相似性) - 越低越好',
-            'DISTS': 'Deep Image Structure and Texture Similarity - 越低越好',
-            'FSIM': 'Feature Similarity Index Measure - 越高越好',
-            'MS_SSIM': 'Multi-Scale Structural Similarity Index - 越高越好',
-            'CW_SSIM': '复小波结构相似 - 越高越好',
-        }
-        for metric_name in self.fr_metrics.keys():
-            if metric_name in fr_info:
-                print(f"  ✓ {metric_name}: {fr_info[metric_name]}")
+        for metric in self.nr_metrics:
+            print(f"  ✓ {metric.upper()}")
         
-        print("\n2. NO REFERENCE METRICS (无参考指标)")
-        print("-" * 50)
-        nr_info = {
-            'NIQE': 'Natural Image Quality Evaluator (自然图像质量评估) - 越低越好',
-            'BRISQUE': 'Blind/Referenceless Image Spatial Quality Evaluator - 越低越好',
-            'PI': 'Perceptual Index (感知指数) - 越低越好',
-            'TOPIQ': 'TOPIQ No-Reference version - 越高越好',
-            'ARNIQA': 'Aesthetic and Realistic No-Reference Image Quality Assessment - 越高越好',
-            'CLIPIQA': 'CLIP-based Image Quality Assessment - 越高越好',
-            'MANIQA': 'Multi-dimension Attention Network for Image Quality Assessment - 越高越好',
-        }
-        for metric_name in self.nr_metrics.keys():
-            if metric_name in nr_info:
-                print(f"  ✓ {metric_name}: {nr_info[metric_name]}")
+        if self.fr_metrics:
+            print("\n2. FULL REFERENCE METRICS (需要参考图像)")
+            print("-" * 50)
+            for metric in self.fr_metrics:
+                print(f"  ✓ {metric.upper()}")
         
-        print("\n3. SPECIAL METRICS (特殊指标)")
-        print("-" * 50)
-        special_info = {
-            'FID': 'Fréchet Inception Distance (需要两个文件夹) - 越低越好',
-            'IS': 'Inception Score (需要文件夹) - 越高越好',
-            'KID': 'Kernel Inception Distance (需要两个文件夹) - 越低越好',
-        }
-        for metric_name in self.special_metrics.keys():
-            if metric_name in special_info:
-                print(f"  ✓ {metric_name}: {special_info[metric_name]}")
+        if self.calculate_fid:
+            print("\n3. SPECIAL METRICS (特殊指标)")
+            print("-" * 50)
+            print(f"  ✓ FID")
         
         print("\n" + "=" * 80)
 
     def get_active_metrics(self):
         """获取当前激活的指标列表"""
         active_metrics = {
-            'FR_metrics': list(self.fr_metrics.keys()),
-            'NR_metrics': list(self.nr_metrics.keys()),
-            'Special_metrics': list(self.special_metrics.keys())
+            'NR_metrics': self.nr_metrics,
+            'FR_metrics': self.fr_metrics,
+            'FID': self.calculate_fid
         }
         return active_metrics
 
-def save_results(all_results, output_dir='results/index'):
+def save_results(all_mean_results, all_std_results, metric_directions, output_dir='results/index'):
     """保存评估结果"""
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     output_dir = os.path.join(output_dir, timestamp)
     os.makedirs(output_dir, exist_ok=True)
 
-    # 保存总结结果为CSV（包含均值和标准差）
-    summary_df = pd.DataFrame.from_dict(all_results['summary'], orient='index')
-    summary_df.to_csv(os.path.join(output_dir, f'summary_{timestamp}.csv'))
+    # 创建带方向标注的列名
+    def add_direction_to_columns(df, directions):
+        new_columns = []
+        for col in df.columns:
+            if col in directions and directions[col] is not None:
+                if directions[col]:  # lower_better = True
+                    new_columns.append(f"{col}↓")
+                else:  # lower_better = False
+                    new_columns.append(f"{col}↑")
+            else:
+                new_columns.append(col)
+        return new_columns
+
+    # 保存均值结果
+    mean_df = pd.DataFrame.from_dict(all_mean_results, orient='index')
+    mean_df.columns = add_direction_to_columns(mean_df, metric_directions)
+    mean_df.to_csv(os.path.join(output_dir, f'results_mean_{timestamp}.csv'))
     
-    # 保存标准差结果为CSV
-    std_df = pd.DataFrame.from_dict(all_results['std'], orient='index')
-    std_df.to_csv(os.path.join(output_dir, f'std_{timestamp}.csv'))
+    # 保存标准差结果
+    std_df = pd.DataFrame.from_dict(all_std_results, orient='index')
+    std_df.columns = add_direction_to_columns(std_df, metric_directions)
+    std_df.to_csv(os.path.join(output_dir, f'results_std_{timestamp}.csv'))
     
-    # 保存合并的结果（均值±标准差格式）
-    combined_df = pd.DataFrame(index=summary_df.index)
-    for col in summary_df.columns:
-        combined_df[col] = summary_df[col].combine(std_df[col], 
-            lambda mean, std: f"{mean:.4f} ± {std:.4f}" if pd.notna(mean) and pd.notna(std) and std > 0 
+    # 保存合并结果（均值±标准差）
+    all_df = pd.DataFrame(index=mean_df.index)
+    for i, col in enumerate(mean_df.columns):
+        mean_col = mean_df.iloc[:, i]
+        std_col = std_df.iloc[:, i]
+        all_df[col] = mean_col.combine(std_col, 
+            lambda mean, std: f"{mean:.4f}±{std:.4f}" if pd.notna(mean) and pd.notna(std) and std is not None
             else f"{mean:.4f}" if pd.notna(mean) else "N/A")
-    combined_df.to_csv(os.path.join(output_dir, f'combined_{timestamp}.csv'))
+    all_df.to_csv(os.path.join(output_dir, f'results_all_{timestamp}.csv'))
     
     # 保存详细结果为JSON
-    with open(os.path.join(output_dir, f'detailed_{timestamp}.json'), 'w') as f:
-        json.dump(all_results['detailed'], f, indent=4)
+    results_json = {
+        'mean_results': all_mean_results,
+        'std_results': all_std_results,
+        'metric_directions': metric_directions,
+        'timestamp': timestamp
+    }
+    with open(os.path.join(output_dir, f'results_{timestamp}.json'), 'w') as f:
+        json.dump(results_json, f, indent=4)
     
     # 生成报告
     report_path = os.path.join(output_dir, f'report_{timestamp}.txt')
@@ -271,31 +217,36 @@ def save_results(all_results, output_dir='results/index'):
         f.write(f"Generated at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
         f.write("=" * 80 + "\n\n")
         
-        # 写入所有指标的结果，包括无参考指标和FID
-        for folder in all_results['summary'].keys():
+        f.write("Metric Directions:\n")
+        f.write("-" * 30 + "\n")
+        for metric, direction in metric_directions.items():
+            if direction is not None:
+                arrow = "↓ (lower better)" if direction else "↑ (higher better)"
+                f.write(f"{metric}: {arrow}\n")
+        f.write("\n")
+        
+        for folder, metrics in all_mean_results.items():
             f.write(f"\nFolder: {folder}\n")
             f.write("-" * 60 + "\n")
-            for metric in all_results['summary'][folder].keys():
-                mean_val = all_results['summary'][folder][metric]
-                std_val = all_results['std'][folder][metric]
-                
-                if mean_val is not None:
-                    if std_val is not None and std_val > 0:
-                        f.write(f"{metric}: {mean_val:.4f} ± {std_val:.4f}\n")
+            for metric, mean_value in metrics.items():
+                std_value = all_std_results[folder].get(metric)
+                if mean_value is not None:
+                    if std_value is not None:
+                        f.write(f"{metric}: {mean_value:.4f} ± {std_value:.4f}\n")
                     else:
-                        f.write(f"{metric}: {mean_val:.4f}\n")
+                        f.write(f"{metric}: {mean_value:.4f}\n")
                 else:
                     f.write(f"{metric}: N/A\n")
             f.write("\n")
 
     print(f"\nResults saved to {output_dir}:")
-    print(f"- Summary CSV (means): summary_{timestamp}.csv")
-    print(f"- Standard deviation CSV: std_{timestamp}.csv")
-    print(f"- Combined CSV (mean ± std): combined_{timestamp}.csv")
-    print(f"- Detailed JSON: detailed_{timestamp}.json")
+    print(f"- Mean results CSV: results_mean_{timestamp}.csv")
+    print(f"- Std results CSV: results_std_{timestamp}.csv")
+    print(f"- Combined results CSV: results_all_{timestamp}.csv")
+    print(f"- Results JSON: results_{timestamp}.json")
     print(f"- Report: report_{timestamp}.txt")
     
-    return output_dir
+    return output_dir, all_df  # 返回合并表格用于显示
 
 def main():
     # 初始化评估器
@@ -331,7 +282,7 @@ def main():
         'vqdualv1(ours)': os.path.join(base_path, 'results/infer_new/xijing_trainACropGray_vqdualv1_AtoB_flexNoResize'),
     }
 
-    folders_to_evaluate = unpaired_folders
+    folders_to_evaluate = semi_paired_folders
 
     # FID参考文件夹（高清Ground Truth图像）
     # fid_ref_folder = os.path.join(base_path, 'datasets/xijing_split/trainB_gray')
@@ -345,63 +296,40 @@ def main():
     print(f"\nActive metrics: {active_metrics}")
     
     # 存储所有结果
-    all_results = {
-        'summary': {},
-        'std': {},
-        'detailed': {}
-    }
+    all_mean_results = {}
+    all_std_results = {}
+    metric_directions = {}
     
     # 评估每个文件夹
     for folder_name, folder_path in folders_to_evaluate.items():
         print(f"\nEvaluating {folder_name}...")
         
         # 确定参考文件夹
-        if folder_name == 'gt':
-            # gt文件夹与自己比较，验证全参考指标是否正常
-            current_fr_ref = folder_path
-        else:
-            # 其他文件夹与gt比较
-            current_fr_ref = fr_ref_folder
+        current_fr_ref = folder_path if folder_name == 'gt' else fr_ref_folder
         
         # 评估当前文件夹
-        avg_results, std_results, detailed_results = evaluator.evaluate_folder(
+        mean_results, std_results, directions = evaluator.evaluate_folder(
             folder_path=folder_path,
             folder_name=folder_name,
             fr_ref_folder=current_fr_ref,
-            special_ref_folder=fid_ref_folder  # 所有文件夹都使用同一个FID参考
+            special_ref_folder=fid_ref_folder
         )
         
-        # 保存结果
-        all_results['summary'][folder_name] = avg_results
-        all_results['std'][folder_name] = std_results
-        all_results['detailed'][folder_name] = detailed_results
+        all_mean_results[folder_name] = mean_results
+        all_std_results[folder_name] = std_results
+        
+        # 更新指标方向信息（所有文件夹的指标方向应该是一致的）
+        if not metric_directions:
+            metric_directions = directions
     
     # 保存结果
-    output_dir = save_results(all_results)
+    output_dir, all_df = save_results(all_mean_results, all_std_results, metric_directions)
     
     # 打印总结表格
     print("\nSummary of Results:")
     print("=" * 80)
-    
-    # 创建一个整洁的表格显示（均值±标准差）
-    summary_df = pd.DataFrame.from_dict(all_results['summary'], orient='index')
-    std_df = pd.DataFrame.from_dict(all_results['std'], orient='index')
-    
-    # 创建合并显示的DataFrame
-    combined_display = pd.DataFrame(index=summary_df.index)
-    for col in summary_df.columns:
-        combined_display[col] = summary_df[col].combine(std_df[col], 
-            lambda mean, std: f"{mean:.4f}±{std:.4f}" if pd.notna(mean) and pd.notna(std) and std > 0 
-            else f"{mean:.4f}" if pd.notna(mean) else "N/A")
-    
     print("\nResults (Mean ± Std):")
-    print(combined_display)
-    
-    print("\nMeans only:")
-    print(summary_df.round(4))
-    
-    print("\nStandard deviations:")
-    print(std_df.round(4))
+    print(all_df)
 
 if __name__ == "__main__":
     main()
