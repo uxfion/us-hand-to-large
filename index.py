@@ -18,9 +18,9 @@ class ImageQualityEvaluator:
         self.device = device
         
         # 定义要计算的指标
-        self.nr_metrics = ['niqe', 'brisque','topiq_nr', 'arniqa', 'clipiqa', 'pi']  # , , 
-        self.fr_metrics = ['lpips', 'ssim', 'psnr']  # 如需要可以添加: []
-        self.calculate_fid = False
+        self.nr_metrics = ['niqe', 'brisque', 'pi', 'topiq_nr', 'arniqa', 'clipiqa']
+        self.fr_metrics = [] # ['lpips', 'psnr', 'ssim', 'ms_ssim', 'cw_ssim', 'fsim', 'vif']
+        self.calculate_fid = True
 
     def evaluate_folder(self, folder_path, folder_name, fr_ref_folder=None, special_ref_folder=None):
         """
@@ -268,7 +268,8 @@ def main():
         'vanilla_cyclegan': '/root/exp/pytorch-CycleGAN-and-pix2pix/results/infer_new/xijing_test_vanilla_cyclegan_cropdata_flexNoResize',
         'vqresnet': os.path.join(base_path, 'results/infer_new/xijing_test_vqresnet_AtoB_cropdata_flexNoResize'),
         'vqdualv0': os.path.join(base_path, 'results/infer_new/xijing_test_vqdualv0_AtoB_cropdata_flexNoResize'),
-        'vqdualv1(ours)': os.path.join(base_path, 'results/infer_new/xijing_test_vqdualv1_AtoB_cropdata_flexNoResize'),
+        'vqdualv1': os.path.join(base_path, 'results/infer_new/xijing_test_vqdualv1_AtoB_cropdata_flexNoResize'),
+        'vqdualv2(ours)': os.path.join(base_path, 'results/infer_new/xijing_test_vqdualv2Paired10_AtoB_cropdata_flexNoResize'),
     }
 
     unpaired_folders = {
@@ -279,10 +280,11 @@ def main():
         'vanilla_cyclegan': '/root/exp/pytorch-CycleGAN-and-pix2pix/results/infer_new/xijing_trainACropGray_vanillaCyclegan_flexNoResize',
         'vqresnet': os.path.join(base_path, 'results/infer_new/xijing_trainACropGray_vqresnet_flexNoResize'),
         'vqdualv0': os.path.join(base_path, 'results/infer_new/xijing_trainACropGray_vqdualv0_AtoB_flexNoResize'),
-        'vqdualv1(ours)': os.path.join(base_path, 'results/infer_new/xijing_trainACropGray_vqdualv1_AtoB_flexNoResize'),
+        'vqdualv1': os.path.join(base_path, 'results/infer_new/xijing_trainACropGray_vqdualv1_AtoB_flexNoResize'),
+        'vqdualv2(ours)': os.path.join(base_path, 'results/infer_new/xijing_trainACropGray_vqdualv2Paired10_AtoB_flexNoResize'),
     }
 
-    folders_to_evaluate = semi_paired_folders
+    folders_to_evaluate = unpaired_folders
 
     # FID参考文件夹（高清Ground Truth图像）
     # fid_ref_folder = os.path.join(base_path, 'datasets/xijing_split/trainB_gray')
