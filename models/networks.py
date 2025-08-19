@@ -5,6 +5,7 @@ import functools
 from torch.optim import lr_scheduler
 from .vq_resnet import VQResnetGenerator
 from .vq_dual_generator import VQDualEnDecoderGenerator
+from .contmix_vq_dual_generator import ContmixVQDualEnDecoderGenerator
 
 
 ###############################################################################
@@ -179,6 +180,22 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, in
             embed_dim=embed_dim,
             beta=beta,
             decay=decay
+        )
+    elif netG == 'contmix':
+        # 导入VQ双编解码器生成器
+        net = ContmixVQDualEnDecoderGenerator(
+            input_nc=input_nc,
+            output_nc=output_nc,
+            ngf=ngf,
+            norm_layer=norm_layer,
+            use_dropout=use_dropout,
+            n_blocks=9,
+            padding_type='reflect',
+            n_embed=n_embed,
+            embed_dim=embed_dim,
+            beta=beta,
+            decay=decay,
+            use_contmix=True
         )
     else:
         raise NotImplementedError('Generator model name [%s] is not recognized' % netG)
