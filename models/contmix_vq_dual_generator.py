@@ -101,39 +101,43 @@ class ContmixVQDualEnDecoderGenerator(nn.Module):
                                        norm_layer=norm_layer, use_dropout=use_dropout, 
                                        use_bias=use_bias)]
             
-            # Stage 2: 中间3个轻量ContMix块 - 中程伪影建模
-            # 参考OverLoCK的渐进式kernel设计，但针对超声优化
-            for i in range(3):
-                encoder += [ContMixBlock(
-                    dim=ngf * mult,  # 256
-                    kernel_size=11,  # 中等核，适合中程伪影
-                    smk_size=5,      # 辅助小核捕获局部噪声
-                    num_heads=4,     # 平衡的注意力头数
-                    mlp_ratio=3,     # 适中的MLP扩展
-                    res_scale=True,  # 使用残差缩放稳定训练
-                    ls_init_value=1.0,  # 参考OverLoCK的设置
-                    drop_path=0.1 * (i + 3) / 9,  # 渐进式dropout
-                    norm_layer=LayerNorm2d,  # ContMix标准配置
-                    use_gemm=True,   # 启用高效实现
-                    deploy=False     # 训练模式
-                )]
+
+
+            encoder += [ContMixBlock(
+                dim=ngf * mult,  # 256
+                kernel_size=13,  # 中等核，适合中程伪影
+                smk_size=5,      # 辅助小核捕获局部噪声
+                num_heads=2,     # 平衡的注意力头数
+                mlp_ratio=3,     # 适中的MLP扩展
+                res_scale=True,  # 使用残差缩放稳定训练
+                ls_init_value=1.0,  # 参考OverLoCK的设置
+                drop_path=0,  # 渐进式dropout
+                norm_layer=LayerNorm2d,  # ContMix标准配置
+                use_gemm=True,   # 启用高效实现
+                deploy=False     # 训练模式
+            )]
             
-            # Stage 3: 后3个强力ContMix块 - 长程伪影去除
-            # 使用更大的核和更强的建模能力
+
+
+            encoder += [ContMixBlock(
+                dim=ngf * mult,
+                kernel_size=7,
+                smk_size=5,
+                num_heads=4,
+                mlp_ratio=3,
+                res_scale=True,
+                ls_init_value=1.0,
+                drop_path=0,
+                norm_layer=LayerNorm2d,
+                use_gemm=True,
+                deploy=False
+            )]
+
             for i in range(3):
-                encoder += [ContMixBlock(
-                    dim=ngf * mult,
-                    kernel_size=15,
-                    smk_size=7,
-                    num_heads=8,
-                    mlp_ratio=4,
-                    res_scale=True,
-                    ls_init_value=1.0,
-                    drop_path=0.1 * (i + 6) / 9,
-                    norm_layer=LayerNorm2d,
-                    use_gemm=True,
-                    deploy=False
-                )]
+                encoder += [ResnetBlock(ngf * mult, padding_type=padding_type, 
+                                       norm_layer=norm_layer, use_dropout=use_dropout, 
+                                       use_bias=use_bias)]
+
         else:
             # 原始版本：9个ResNet块
             for i in range(n_blocks):
