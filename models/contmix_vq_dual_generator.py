@@ -105,8 +105,8 @@ class ContmixVQDualEnDecoderGenerator(nn.Module):
 
             encoder += [ContMixBlock(
                 dim=ngf * mult,  # 256
-                kernel_size=13,  # 中等核，适合中程伪影
-                smk_size=5,      # 辅助小核捕获局部噪声
+                kernel_size=7,  # 中等核，适合中程伪影
+                smk_size=3,      # 辅助小核捕获局部噪声
                 num_heads=2,     # 平衡的注意力头数
                 mlp_ratio=3,     # 适中的MLP扩展
                 res_scale=True,  # 使用残差缩放稳定训练
@@ -121,7 +121,7 @@ class ContmixVQDualEnDecoderGenerator(nn.Module):
 
             encoder += [ContMixBlock(
                 dim=ngf * mult,
-                kernel_size=7,
+                kernel_size=13,
                 smk_size=5,
                 num_heads=4,
                 mlp_ratio=3,
