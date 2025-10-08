@@ -262,33 +262,40 @@ def main():
     
     # 定义需要评估的文件夹
     # 半配对数据
-    semi_paired_folders = {
+    semi_paired_folders = {  # 配对
         'input': os.path.join(base_path, 'datasets/xijing_split/test/test_semi_paired_LR_crop_gray'),
         'gt': os.path.join(base_path, 'datasets/xijing_split/test/test_semi_paired_HR_crop_gray'),
-
-        'real-esrgan': '/root/exp/Real-ESRGAN/results/test_cropdata_train0_SR_gray',
-        'vanilla_cyclegan': '/root/exp/pytorch-CycleGAN-and-pix2pix/results/infer_new/xijing_test_vanilla_cyclegan_cropdata_flexNoResize',
-        'vqresnet': os.path.join(base_path, 'results/infer_new/xijing_test_vqresnet_AtoB_cropdata_flexNoResize'),
-        'vqdualv0': os.path.join(base_path, 'results/infer_new/xijing_test_vqdualv0_AtoB_cropdata_flexNoResize'),
-        'vqdualv1': os.path.join(base_path, 'results/infer_new/xijing_test_vqdualv1_AtoB_cropdata_flexNoResize'),
-        'vqdualv2': os.path.join(base_path, 'results/infer_new/xijing_test_vqdualv2Paired10_AtoB_cropdata_flexNoResize'),
-        'vqdualv3': os.path.join(base_path, 'results/infer_new/xijing_test_vqdualv3Paired10Semipaired10_AtoB_cropdata_flexNoResize'),
+        # 'real-esrgan': '/root/exp/us-hand-to-large/results/comparative-exp/real_esrgan/test_cropdata_train0_SR',
+        # 'vanilla_cyclegan': '/root/exp/us-hand-to-large/results/comparative-exp/vanilla_cyclegan/xijing_test_vanilla_cyclegan_cropdata_flexNoResize',
+        'unsb': '/root/exp/us-hand-to-large/results/comparative-exp/unsb/unsb_semi_paired_test_gray/fake_1',
+        # 'vqresnet': os.path.join(base_path, 'results/infer_new/xijing_test_vqresnet_AtoB_cropdata_flexNoResize'),
+        # 'vqdualv0': os.path.join(base_path, 'results/infer_new/xijing_test_vqdualv0_AtoB_cropdata_flexNoResize'),
+        # 'vqdualv1': os.path.join(base_path, 'results/infer_new/xijing_test_vqdualv1_AtoB_cropdata_flexNoResize'),
+        # 'vqdualv2': os.path.join(base_path, 'results/infer_new/xijing_test_vqdualv2Paired10_AtoB_cropdata_flexNoResize'),
+        # 'vqdualv3': os.path.join(base_path, 'results/infer_new/xijing_test_vqdualv3Paired10Semipaired10_AtoB_cropdata_flexNoResize'),
+        'vqdualv3_dim64': os.path.join(base_path, 'results/infer_new/xijing_test_vqdualv3_dim64_Paired10Semipaired10_AtoB_cropdata_flexNoResize'),
+        'contmixv0': os.path.join(base_path, 'results/infer_new/xijing_test_contmixv0_k13s5_k7s5'),
+        'contmixv1': os.path.join(base_path, 'results/infer_new/xijing_test_contmixv1_k7s3_k13s5'),
+        
     }
 
     unpaired_folders = {
         'input': os.path.join(base_path, 'datasets/xijing_split/trainA_crop_gray'),
         'gt': os.path.join(base_path, 'datasets/xijing_split/trainB_crop_gray'),
-
-        'real-esrgan': '/root/exp/Real-ESRGAN/results/xijing_trainACropGray_RealESRGAN',
-        'vanilla_cyclegan': '/root/exp/pytorch-CycleGAN-and-pix2pix/results/infer_new/xijing_trainACropGray_vanillaCyclegan_flexNoResize',
-        'vqresnet': os.path.join(base_path, 'results/infer_new/xijing_trainACropGray_vqresnet_flexNoResize'),
-        'vqdualv0': os.path.join(base_path, 'results/infer_new/xijing_trainACropGray_vqdualv0_AtoB_flexNoResize'),
-        'vqdualv1': os.path.join(base_path, 'results/infer_new/xijing_trainACropGray_vqdualv1_AtoB_flexNoResize'),
-        'vqdualv2': os.path.join(base_path, 'results/infer_new/xijing_trainACropGray_vqdualv2Paired10_AtoB_flexNoResize'),
-        'vqdualv3': os.path.join(base_path, 'results/infer_new/xijing_trainACropGray_vqdualv3Paired10Semipaired10_AtoB_flexNoResize'),
+        # 'real-esrgan': '/root/exp/us-hand-to-large/results/comparative-exp/real_esrgan/xijing_trainACropGray_RealESRGAN',
+        # 'vanilla_cyclegan': '/root/exp/us-hand-to-large/results/comparative-exp/vanilla_cyclegan/xijing_trainACropGray_vanillaCyclegan_flexNoResize',
+        'unsb': '/root/exp/us-hand-to-large/results/comparative-exp/unsb/unsb_unpaired_test_gray/fake_1',
+        # 'vqresnet': os.path.join(base_path, 'results/infer_new/xijing_trainACropGray_vqresnet_flexNoResize'),
+        # 'vqdualv0': os.path.join(base_path, 'results/infer_new/xijing_trainACropGray_vqdualv0_AtoB_flexNoResize'),
+        # 'vqdualv1': os.path.join(base_path, 'results/infer_new/xijing_trainACropGray_vqdualv1_AtoB_flexNoResize'),
+        # 'vqdualv2': os.path.join(base_path, 'results/infer_new/xijing_trainACropGray_vqdualv2Paired10_AtoB_flexNoResize'),
+        # 'vqdualv3': os.path.join(base_path, 'results/infer_new/xijing_trainACropGray_vqdualv3Paired10Semipaired10_AtoB_flexNoResize'),
+        'vqdualv3_dim64': os.path.join(base_path, 'results/infer_new/xijing_trainACropGray_vqdualv3_dim64_Paired10Semipaired10_AtoB_flexNoResize'),
+        'contmixv0': os.path.join(base_path, 'results/infer_new/xijing_trainACropGray_contmixv0_k13s5_k7s5'),
+        'contmixv1': os.path.join(base_path, 'results/infer_new/xijing_trainACropGray_contmixv1_k7s3_k13s5'),
     }
 
-    folders_to_evaluate = semi_paired_folders
+    folders_to_evaluate = unpaired_folders
 
     # FID参考文件夹（高清Ground Truth图像）
     # fid_ref_folder = os.path.join(base_path, 'datasets/xijing_split/trainB_gray')

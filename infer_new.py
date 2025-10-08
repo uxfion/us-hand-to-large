@@ -67,6 +67,9 @@ class CycleGANInference:
         if 'vq_dual' in self.args.netG.lower():
             model_args.extend(['--embed_dim', str(self.args.embed_dim)])
             model_args.extend(['--n_embed', str(self.args.n_embed)])
+        elif 'contmix' in self.args.netG.lower():
+            model_args.extend(['--embed_dim', str(self.args.embed_dim)])
+            model_args.extend(['--n_embed', str(self.args.n_embed)])
             
         # Add model suffix if specified
         if self.args.model_suffix:
