@@ -28,8 +28,8 @@ class MixedDataset(BaseDataset):
         print(f"找到{self.B_size}张B图像")
         
         # 设置半对齐数据路径
-        self.dir_semi_LR = os.path.join(opt.dataroot, 'semi_paired_LR')
-        self.dir_semi_HR = os.path.join(opt.dataroot, 'semi_paired_HR')
+        self.dir_semi_LR = os.path.join(opt.dataroot, 'semipair_LR_train')
+        self.dir_semi_HR = os.path.join(opt.dataroot, 'semipair_HR_train')
         
         # 检查目录是否存在
         self.has_semi_paired = os.path.exists(self.dir_semi_LR) and os.path.exists(self.dir_semi_HR)
@@ -59,7 +59,7 @@ class MixedDataset(BaseDataset):
         # 设置各模式权重
         self.unaligned_weight = 1
         self.aligned_weight = 1
-        self.semi_paired_weight = 10
+        self.semi_paired_weight = 4
         
         # 计算基于权重的样本数量
         self.calculate_weighted_samples()

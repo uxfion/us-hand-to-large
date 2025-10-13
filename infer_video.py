@@ -210,6 +210,12 @@ def create_cyclegan_processor(args) -> Callable[[Image.Image], Image.Image]:
     # Create a processing function that uses the inference engine
     def process_frame(pil_image: Image.Image) -> Image.Image:
         """Process a single frame using CycleGAN model."""
+        # Convert RGB video frame to grayscale if model expects grayscale input
+        if args.input_nc == 1 and pil_image.mode == 'RGB':
+            pil_image = pil_image.convert('L')
+        elif args.input_nc == 3 and pil_image.mode == 'L':
+            pil_image = pil_image.convert('RGB')
+        
         # Preprocess
         input_tensor, original_info = cyclegan._preprocess_image(pil_image)
 
@@ -230,6 +236,11 @@ def create_cyclegan_processor(args) -> Callable[[Image.Image], Image.Image]:
 
         # Postprocess
         result_image = cyclegan._postprocess_output(output, original_info)
+        
+        # Convert output back to RGB for video encoding
+        # Video frames must be RGB (3 channels) for ffmpeg
+        if result_image.mode == 'L':
+            result_image = result_image.convert('RGB')
 
         return result_image
 

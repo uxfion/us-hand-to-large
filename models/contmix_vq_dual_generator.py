@@ -111,7 +111,7 @@ class ContmixVQDualEnDecoderGenerator(nn.Module):
                 mlp_ratio=3,     # 适中的MLP扩展
                 res_scale=True,  # 使用残差缩放稳定训练
                 ls_init_value=1.0,  # 参考OverLoCK的设置
-                drop_path=0,  # 渐进式dropout
+                drop_path=0.02,  # 渐进式dropout
                 norm_layer=LayerNorm2d,  # ContMix标准配置
                 use_gemm=True,   # 启用高效实现
                 deploy=False     # 训练模式
@@ -127,7 +127,7 @@ class ContmixVQDualEnDecoderGenerator(nn.Module):
                 mlp_ratio=3,
                 res_scale=True,
                 ls_init_value=1.0,
-                drop_path=0,
+                drop_path=0.03,
                 norm_layer=LayerNorm2d,
                 use_gemm=True,
                 deploy=False

@@ -30,9 +30,9 @@ class VQCycleGANModel(BaseModel):
         
         if is_train:
             # CycleGAN原有参数
-            parser.add_argument('--lambda_A', type=float, default=10.0, 
+            parser.add_argument('--lambda_A', type=float, default=12.0, 
                               help='weight for cycle loss (A -> B -> A)')
-            parser.add_argument('--lambda_B', type=float, default=10.0, 
+            parser.add_argument('--lambda_B', type=float, default=12.0, 
                               help='weight for cycle loss (B -> A -> B)')
             parser.add_argument('--lambda_identity', type=float, default=0.0,
                               help='use identity mapping. Set to 0 for medical image enhancement.')
@@ -48,17 +48,17 @@ class VQCycleGANModel(BaseModel):
                               help='decay rate for EMA in VQ')
             
             # 重建损失权重
-            parser.add_argument('--lambda_rec_A', type=float, default=10.0,
+            parser.add_argument('--lambda_rec_A', type=float, default=3.0,
                               help='weight for A domain reconstruction loss')
-            parser.add_argument('--lambda_rec_B', type=float, default=10.0,
+            parser.add_argument('--lambda_rec_B', type=float, default=3.0,
                               help='weight for B domain reconstruction loss')
             parser.add_argument('--lambda_vq', type=float, default=1.0,
                               help='weight for VQ loss')
             
             # 配对损失权重
-            parser.add_argument('--lambda_paired', type=float, default=10.0,
+            parser.add_argument('--lambda_paired', type=float, default=5.0,
                               help='weight for paired loss (aligned data with L1)')
-            parser.add_argument('--lambda_semi_paired', type=float, default=10.0,
+            parser.add_argument('--lambda_semi_paired', type=float, default=8.0,
                               help='weight for semi-paired loss (semi_paired data with LPIPS)')
             
         return parser
@@ -287,8 +287,16 @@ class VQCycleGANModel(BaseModel):
             # 计算semi_paired数据比例并应用线性缩放
             self.semi_paired_ratio = self.num_semi_paired / len(self.batch_modes) if len(self.batch_modes) > 0 else 0.0
             
+            # ⚠️ 重要：LPIPS需要[0,1]范围的输入，需要从[-1,1]转换
+            # 转换公式：(x + 1) / 2 将 [-1, 1] -> [0, 1]
+            semi_paired_fake_B_normalized = (semi_paired_fake_B + 1.0) / 2.0
+            semi_paired_real_B_normalized = (semi_paired_real_B + 1.0) / 2.0
+            
             # LPIPS损失（注意LPIPS是lower_better的，所以不需要1-lpips）
-            lpips_loss = self.criterionSemiPaired(semi_paired_fake_B, semi_paired_real_B)
+            lpips_loss = self.criterionSemiPaired(
+                semi_paired_fake_B_normalized, 
+                semi_paired_real_B_normalized
+            )
             self.loss_semi_paired = lpips_loss * lambda_semi_paired * self.semi_paired_ratio
             
             # # 调试信息（可以在训练稳定后删除）
