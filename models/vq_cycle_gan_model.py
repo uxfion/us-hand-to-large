@@ -136,7 +136,7 @@ class VQCycleGANModel(BaseModel):
             
             # 初始化LPIPS损失（用于semi_paired数据）
             self.criterionSemiPaired = pyiqa.create_metric(
-                'lpips',  # 使用标准的lpips
+                'lpips+',  # 使用标准的lpips
                 device=self.device, 
                 as_loss=True
             )
