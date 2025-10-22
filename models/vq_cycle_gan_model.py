@@ -67,6 +67,9 @@ class VQCycleGANModel(BaseModel):
         """初始化VQ-CycleGAN模型"""
         BaseModel.__init__(self, opt)
         
+        # wsl上避免使用GPU共享内存
+        torch.cuda.set_per_process_memory_fraction(1.0, 0)
+        
         # 定义损失名称（用于打印和保存）
         self.loss_names = ['D_A', 'G_A', 'cycle_A', 
                           'D_B', 'G_B', 'cycle_B',
