@@ -264,7 +264,9 @@ class CycleGANInference:
         with torch.no_grad():
             if hasattr(self.model, 'netG'):
                 # For test model or similar
-                if 'vq_dual' in self.args.netG and hasattr(self.model.netG, 'forward'):
+                if 'contmix' in self.args.netG and hasattr(self.model.netG, 'forward'):
+                    output = self.model.netG(input_tensor, direction='AtoB')
+                elif 'vq_dual' in self.args.netG and hasattr(self.model.netG, 'forward'):
                     output = self.model.netG(input_tensor, direction='AtoB')
                 elif 'vq_resnet' in self.args.netG and hasattr(self.model.netG, 'forward'):
                     output, _ = self.model.netG(input_tensor)
