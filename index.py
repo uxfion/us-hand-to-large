@@ -20,7 +20,7 @@ class ImageQualityEvaluator:
         # 定义要计算的指标
         # self.nr_metrics = []
         self.nr_metrics = ['niqe', 'brisque', 'pi', 'topiq_nr', 'arniqa', 'clipiqa']
-        self.fr_metrics = []
+        # self.fr_metrics = []
         self.fr_metrics = ['lpips', 'psnr', 'ssim', 'ms_ssim', 'cw_ssim', 'fsim', 'vif']
         self.calculate_fid = True
 
@@ -265,23 +265,26 @@ def main():
     semi_paired_folders = {  # 配对
         'input': os.path.join(base_path, 'datasets/xijing_split/test/test_semi_paired_LR_crop_gray'),
         'gt': os.path.join(base_path, 'datasets/xijing_split/test/test_semi_paired_HR_crop_gray'),
+        'denoise': '/root/exp/us-hand-to-large/results/comparative-exp/jiang_denoise/test_semi_paired/result2',
         'real-esrgan': '/root/exp/us-hand-to-large/results/comparative-exp/real_esrgan/test_cropdata_train0_SR',
         'vanilla_cyclegan': '/root/exp/us-hand-to-large/results/comparative-exp/vanilla_cyclegan/xijing_test_vanilla_cyclegan_cropdata_flexNoResize',
         'unsb': '/root/exp/us-hand-to-large/results/comparative-exp/unsb/unsb_semi_paired_test_gray/fake_1',
-        # 'vqresnet': os.path.join(base_path, 'results/infer_new/xijing_test_vqresnet_AtoB_cropdata_flexNoResize'),
+        'vqresnet(+vq)': os.path.join(base_path, 'results/infer_new/xijing_test_vqresnet_abl_1vq'),
         # 'vqdualv0': os.path.join(base_path, 'results/infer_new/xijing_test_vqdualv0_AtoB_cropdata_flexNoResize'),
-        # 'vqdualv1': os.path.join(base_path, 'results/infer_new/xijing_test_vqdualv1_AtoB_cropdata_flexNoResize'),
+        'vqdualv1(+vq+dual)': os.path.join(base_path, 'results/infer_new/xijing_test_vqdualv1_AtoB_cropdata_flexNoResize'),
         # 'vqdualv2': os.path.join(base_path, 'results/infer_new/xijing_test_vqdualv2Paired10_AtoB_cropdata_flexNoResize'),
-        # 'vqdualv3': os.path.join(base_path, 'results/infer_new/xijing_test_vqdualv3Paired10Semipaired10_AtoB_cropdata_flexNoResize'),
-        'vqdualv3_dim64': os.path.join(base_path, 'results/infer_new/xijing_test_vqdualv3_dim64_Paired10Semipaired10_AtoB_cropdata_flexNoResize'),
-        'contmixv0': os.path.join(base_path, 'results/infer_new/xijing_test_contmixv0_k13s5_k7s5'),
-        'contmixv1': os.path.join(base_path, 'results/infer_new/xijing_test_contmixv1_k7s3_k13s5'),
+        'vqdualv3(+vq+dual+loss_semi_paired)': os.path.join(base_path, 'results/infer_new/xijing_test_vqdualv3Paired10Semipaired10_AtoB_cropdata_flexNoResize'),
+        'vqdualv3_dim64(+vq+dual+loss_semi_paired+dim64)': os.path.join(base_path, 'results/infer_new/xijing_test_vqdualv3_dim64_Paired10Semipaired10_AtoB_cropdata_flexNoResize'),
+        'contmixv0(+vq+dual+loss_semi_paired+dim64+global_k13s5_k7s5)': os.path.join(base_path, 'results/infer_new/xijing_test_contmixv0_k13s5_k7s5'),
+        'contmixv1(+vq+dual+loss_semi_paired+dim64+global_k7s3_k13s5)': os.path.join(base_path, 'results/infer_new/xijing_test_contmixv1_k7s3_k13s5'),
         
     }
 
 
     semi_paired_degrade_folders = {  # 配对 降级图像
         'input': '/root/exp/datasets/xijing_new/test/degrade/xijing_semipair_HR_test_crop_gray_degrade_overlockv1_BtoA',
+        'gt': '/root/exp/datasets/xijing_new/test/xijing_semipair_HR_test_crop_gray',
+        'denoise': '/root/exp/us-hand-to-large/results/comparative-exp/jiang_denoise/xijing_semipair_fakeLR/result2_renameHR',
         'real-esrgan': '/root/exp/us-hand-to-large/results/comparative-exp/real_esrgan/test_degrade_train0_SR',
         'vanilla_cyclegan': '/root/exp/us-hand-to-large/results/comparative-exp/vanilla_cyclegan/xijing_semi_degrade_vanilla_cyclegan_cropdata_flexNoResize',
         'unsb': '/root/exp/us-hand-to-large/results/comparative-exp/unsb/unsb_xijing_new_degrade/fake_1',
@@ -293,7 +296,7 @@ def main():
         'vqdualv3_dim64': '/root/exp/us-hand-to-large/results/infer_degrade/xijing_new_test_semi_degrade_vqdualv3',
         'contmixv0': '/root/exp/us-hand-to-large/results/infer_degrade/xijing_new_test_semi_degrade_overlockv0',
         'contmixv1': '/root/exp/us-hand-to-large/results/infer_degrade/xijing_new_test_semi_degrade_overlockv1',
-        'gt': '/root/exp/datasets/xijing_new/test/xijing_semipair_HR_test_crop_gray',
+        
         
     }
 
